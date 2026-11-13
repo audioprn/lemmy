@@ -9,6 +9,7 @@
 pub mod awards;
 pub mod creator_page;
 pub mod creators;
+pub mod drafts;
 pub mod feed;
 pub mod news;
 pub mod poll;
