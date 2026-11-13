@@ -322,6 +322,8 @@ pub struct PostQuery<'a> {
   pub search_url_only: Option<bool>,
   pub page_cursor: Option<PaginationCursor>,
   pub tag_id: Option<CommunityTagId>,
+  /// audioprn: comma-separated content filters, see `content_filter_sql`.
+  pub content_filters: Option<String>,
   /// For backwards compat with API v3 (not available on API v4).
   pub page: Option<i64>,
   pub limit: Option<i64>,
@@ -443,9 +445,16 @@ impl PostQuery<'_> {
     }
 
     // Posts from unlisted communities should not be visible in Local/All feeds
+    // audioprn: except in My audioprn (`my_*` and `saved` filters), which shows followed creators' page posts
+    // from the unlisted `creators` community.
+    let my_feed = self
+      .content_filters
+      .as_deref()
+      .is_some_and(|f| f.contains("my_") || f.contains("saved"));
     if self.community_id.is_none()
       && self.multi_community_id.is_none()
       && (listing_type == ListingType::All || listing_type == ListingType::Local)
+      && !my_feed
     {
       query = query.filter(filter_unlisted_or_followed());
     }
@@ -566,6 +575,13 @@ impl PostQuery<'_> {
         .single_value();
 
       query = query.filter(tags.eq(tag_id));
+    }
+
+    // audioprn: content filters
+    if let Some(filters) = &self.content_filters {
+      query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(
+        &crate::audioprn::content_filter_sql(filters, my_person_id.map(|p| p.0)),
+      ));
     }
 
     // Only sort by ascending for Old

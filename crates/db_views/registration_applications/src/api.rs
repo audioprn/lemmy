@@ -62,6 +62,11 @@ pub struct Register {
   pub stay_logged_in: Option<bool>,
   /// Invitation token
   pub token: Option<String>,
+  /// audioprn: creator signup. Exactly 3 links to the creator's audios or scripts. When present,
+  /// a creator application is created for admins to review.
+  pub creator_content_links: Option<Vec<String>>,
+  /// audioprn: creator signup. Up to 3 optional social media links.
+  pub creator_social_links: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize)]

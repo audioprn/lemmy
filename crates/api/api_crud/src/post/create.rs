@@ -50,6 +50,22 @@ pub async fn create_post(
   local_user_view: LocalUserView,
 ) -> LemmyResult<Json<PostResponse>> {
   honeypot_check(&data.honeypot)?;
+  // audioprn: only verified creators, moderators and admins can post.
+  lemmy_audioprn::check_can_post(&mut context.pool(), &local_user_view, data.community_id).await?;
+  lemmy_audioprn::post::check_one_flair(
+    &mut context.pool(),
+    data.community_id,
+    data.tags.as_deref(),
+    &local_user_view,
+  )
+  .await?;
+  lemmy_audioprn::post::check_title_tags(
+    &mut context.pool(),
+    data.community_id,
+    &data.name,
+    &local_user_view,
+  )
+  .await?;
   let local_site = SiteView::read_local(&mut context.pool()).await?.local_site;
 
   let slur_regex = slur_regex(&context).await?;

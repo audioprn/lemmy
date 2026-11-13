@@ -49,6 +49,10 @@ pub async fn resolve_post_report(
   };
 
   PostReport::update_resolved(&mut context.pool(), report_id, &form).await?;
+  // audioprn: Approve or Delete ends the review, so it closes every report on the post.
+  if data.resolved {
+    PostReport::resolve_all_for_object(&mut context.pool(), report.post.id, person.id).await?;
+  }
 
   let post_report_view =
     ReportCombinedViewInternal::read_post_report(&mut context.pool(), report_id, person).await?;

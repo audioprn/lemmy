@@ -68,6 +68,7 @@ pub async fn list_posts(
     search_url_only,
     page_cursor,
     tag_id,
+    content_filters,
     ..
   } = data;
 
@@ -115,6 +116,7 @@ pub async fn list_posts(
     search_url_only,
     tag_id,
     page_cursor,
+    content_filters,
   }
   .list(&mut context.pool(), site, local_site)
   .await?;

@@ -20,7 +20,10 @@ use lemmy_db_schema::{
     multi_community::{MultiCommunity, MultiCommunityEntry, multi_community_keys as mkey},
     site::Site,
   },
-  utils::{limit_fetch, queries::filters::filter_is_subscribed},
+  utils::{
+    limit_fetch,
+    queries::filters::{filter_is_subscribed, filter_unlisted_or_followed},
+  },
 };
 use lemmy_db_schema_file::{
   PersonId,
@@ -149,6 +152,8 @@ impl CommunityQuery<'_> {
     if self.local_user.is_none() {
       query = query.filter(community::visibility.ne(CommunityVisibility::LocalOnlyPrivate));
     }
+    // audioprn: unlisted communities (e.g. `creators`) stay out of the list, as documented.
+    query = query.filter(filter_unlisted_or_followed());
 
     if let Some(listing_type) = self.listing_type {
       query = match listing_type {

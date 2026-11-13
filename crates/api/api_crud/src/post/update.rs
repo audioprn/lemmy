@@ -110,6 +110,27 @@ pub async fn edit_post(
   )
   .await?;
 
+  // audioprn: a post keeps exactly one flair (where its community has flairs).
+  if data.tags.is_some() {
+    lemmy_audioprn::post::check_one_flair(
+      &mut context.pool(),
+      orig_post.community.id,
+      data.tags.as_deref(),
+      &local_user_view,
+    )
+    .await?;
+  }
+  // audioprn: a gender tag first and at most 10 tags in the title.
+  if let Some(name) = &data.name {
+    lemmy_audioprn::post::check_title_tags(
+      &mut context.pool(),
+      orig_post.community.id,
+      name,
+      &local_user_view,
+    )
+    .await?;
+  }
+
   let nsfw = if orig_post.community.nsfw {
     Some(true)
   } else {

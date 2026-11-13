@@ -224,8 +224,7 @@ impl CommentQuery<'_> {
     query = match listing_type {
       ListingType::Subscribed => query.filter(filter_is_subscribed()),
       ListingType::Local => {
-        // Always filter out unlisted comms unless you follow them
-        query = query.filter(filter_unlisted_or_followed());
+        // audioprn: unlisted comms are filtered below (not for a single post's comments)
 
         // Only filter by local when there's no post or community given
         if self.post_id.is_none() && self.community_id.is_none() {
@@ -234,7 +233,7 @@ impl CommentQuery<'_> {
           query
         }
       }
-      ListingType::All => query.filter(filter_unlisted_or_followed()),
+      ListingType::All => query,
       ListingType::ModeratorView => {
         // Pre-fetch the moderator view community ids, since the join is too costly
         let community_ids = if let Some(my_person_id) = my_person_id {
@@ -258,7 +257,9 @@ impl CommentQuery<'_> {
     };
 
     // Comments from unlisted communities should not be visible in Local/All feeds
+    // audioprn: but a post's own comments always show (e.g. creators' page posts).
     if self.community_id.is_none()
+      && self.post_id.is_none()
       && (listing_type == ListingType::All || listing_type == ListingType::Local)
     {
       query = query.filter(filter_unlisted_or_followed());

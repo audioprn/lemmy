@@ -783,7 +783,7 @@ diesel::table! {
 diesel::table! {
     post (id) {
         id -> Int4,
-        #[max_length = 200]
+        #[max_length = 300]
         name -> Varchar,
         #[max_length = 2000]
         url -> Nullable<Varchar>,
@@ -858,7 +858,7 @@ diesel::table! {
         id -> Int4,
         creator_id -> Int4,
         post_id -> Int4,
-        #[max_length = 200]
+        #[max_length = 300]
         original_post_name -> Varchar,
         original_post_url -> Nullable<Text>,
         original_post_body -> Nullable<Text>,

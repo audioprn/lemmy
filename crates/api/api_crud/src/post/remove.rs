@@ -15,7 +15,6 @@ use lemmy_db_schema::{
     local_user::LocalUser,
     modlog::{Modlog, ModlogInsertForm},
     post::{Post, PostUpdateForm},
-    post_report::PostReport,
   },
   traits::Reportable,
 };
@@ -59,8 +58,8 @@ pub async fn remove_post(
   )
   .await?;
 
-  PostReport::resolve_all_for_object(&mut context.pool(), post_id, local_user_view.person.id)
-    .await?;
+  // audioprn: reports stay open when a post is hidden (removed): a hidden post with an open report
+  // is "under review". Moderators close the report with Approve or Delete in the report queue.
 
   // Mod tables
   let form = ModlogInsertForm::mod_remove_post(

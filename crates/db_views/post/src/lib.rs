@@ -32,6 +32,8 @@ use {
 pub mod api;
 #[cfg(feature = "full")]
 pub mod impls;
+#[cfg(feature = "full")]
+mod audioprn;
 
 #[skip_serializing_none]
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]

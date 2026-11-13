@@ -1,0 +1,43 @@
+# Local dev additions on top of docker/docker-compose.yml.
+# Run from the repo root:
+#   docker compose -f docker/docker-compose.yml -f audioprn/dev/docker-compose.override.yml up -d --build
+services:
+  proxy:
+    # Windows/Hyper-V reserves ports 1034-1533, so 1236 can't be used here.
+    # The site is at http://localhost:8880 instead.
+    ports: !override
+      - "8880:1236"
+      - "8536:8536"
+
+  lemmy:
+    volumes:
+      # Use our config (adds email) instead of docker/lemmy.hjson.
+      # Paths are relative to docker/, the first compose file's folder.
+      - ../audioprn/dev/lemmy.hjson:/config/config.hjson:Z
+    depends_on:
+      - mailpit
+
+  lemmy-ui:
+    environment:
+      # The Eruda debug console's inline styles are blocked by the site's
+      # security policy, and it breaks pages such as email verification.
+      - LEMMY_UI_ERUDA=false
+      # The UI server talks to the backend inside Docker, but browsers must use
+      # the public address. Upstream uses lemmy:8536 for both, which only works
+      # if you add "lemmy" to your hosts file.
+      - LEMMY_UI_BACKEND_INTERNAL=lemmy:8536
+      - LEMMY_UI_BACKEND=localhost:8880
+    # Build the website from our fork (audioprn/lemmy-ui), cloned next to this
+    # repo at ../lemmy-ui, instead of the upstream image.
+    image: !reset null
+    build:
+      context: ../../lemmy-ui
+      dockerfile: dev.dockerfile
+
+  # Catches every email the site sends. Web inbox at http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.27
+    hostname: mailpit
+    ports:
+      - "8025:8025"
+    restart: unless-stopped

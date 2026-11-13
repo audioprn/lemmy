@@ -39,6 +39,12 @@ pub async fn add_mod_to_community(
   )
   .await?;
 
+  // audioprn: only verified creators can be moderators.
+  if data.added && !lemmy_audioprn::is_verified_creator(&mut context.pool(), data.person_id).await?
+  {
+    return Err(LemmyErrorType::Unknown("only_creators_can_be_moderators".into()).into());
+  }
+
   if !data.added {
     // Dont allow the last community mod to remove himself
     let mods = CommunityModeratorView::for_community(&mut context.pool(), community.id).await?;

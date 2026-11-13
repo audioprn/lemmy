@@ -22,6 +22,7 @@ workspace = true
 full = []
 
 [dependencies]
+lemmy_audioprn = { workspace = true }
 lemmy_db_views_comment = { workspace = true, features = ["full"] }
 lemmy_db_views_community = { workspace = true, features = ["full"] }
 lemmy_db_views_community_moderator = { workspace = true, features = ["full"] }

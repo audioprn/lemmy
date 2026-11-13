@@ -1,0 +1,30 @@
+{
+  # Local development config. Same as docker/lemmy.hjson plus an email server,
+  # because Phase 1 requires email verification to register.
+  # Sent emails are caught by Mailpit: open http://localhost:8025 to read them.
+
+  setup: {
+    admin_username: "lemmy"
+    admin_password: "lemmylemmy"
+    site_name: "audioprn-dev"
+  }
+  database: {
+    connection: "postgres://lemmy:password@postgres:5432/lemmy"
+  }
+
+  # Includes the port so links in emails open the local site (http://localhost:8880/...).
+  hostname: "localhost:8880"
+  tls_enabled: false
+  bind: "0.0.0.0"
+  port: 8536
+
+  pictrs: {
+    url: "http://pictrs:8080/"
+    api_key: "my-pictrs-key"
+  }
+
+  email: {
+    connection: "smtp://mailpit:1025"
+    smtp_from_address: "noreply@localhost"
+  }
+}

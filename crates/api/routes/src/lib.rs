@@ -185,7 +185,6 @@ use lemmy_routes::images::{
     upload_site_banner,
     upload_site_icon,
     upload_user_avatar,
-    upload_user_banner,
   },
 };
 use lemmy_utils::rate_limit::RateLimit;
@@ -380,7 +379,8 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
           )
           .route("/avatar", post().to(upload_user_avatar))
           .route("/avatar", delete().to(delete_user_avatar))
-          .route("/banner", post().to(upload_user_banner))
+          // audioprn: banners for verified creators and admins only
+          .route("/banner", post().to(lemmy_audioprn::upload_user_banner))
           .route("/banner", delete().to(delete_user_banner))
           .service(
             scope("/block")
@@ -414,6 +414,95 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
               .route("", post().to(create_invitation))
               .route("", delete().to(revoke_invitation))
               .route("/list", get().to(list_invitations)),
+          ),
+      )
+      // audioprn: verified creators, post credits and reactions
+      .service(
+        scope("/audioprn")
+          .route(
+            "/creator_application",
+            post().to(lemmy_audioprn::submit_creator_application),
+          )
+          .route(
+            "/creator_application/mine",
+            get().to(lemmy_audioprn::get_my_creator_application),
+          )
+          .route(
+            "/creator_application/list",
+            get().to(lemmy_audioprn::list_creator_applications),
+          )
+          .route(
+            "/creator_application/approve",
+            put().to(lemmy_audioprn::approve_creator_application),
+          )
+          .route("/post_credits", get().to(lemmy_audioprn::post::get_post_credits))
+          .route("/post_credits", put().to(lemmy_audioprn::post::set_post_credits))
+          .route(
+            "/post_reactions",
+            get().to(lemmy_audioprn::reaction::get_post_reactions),
+          )
+          .route(
+            "/post_reaction",
+            put().to(lemmy_audioprn::reaction::set_post_reaction),
+          )
+          .route(
+            "/verified_creators",
+            get().to(lemmy_audioprn::list_verified_creators),
+          )
+          .route("/creators", get().to(lemmy_audioprn::creators::list_creators))
+          .route(
+            "/creator_followers",
+            get().to(lemmy_audioprn::creators::my_followers),
+          )
+          .route(
+            "/creator_settings",
+            put().to(lemmy_audioprn::creators::set_creator_settings),
+          )
+          .route("/news", get().to(lemmy_audioprn::news::list_news))
+          .route("/news", post().to(lemmy_audioprn::news::create_news))
+          .route("/news", delete().to(lemmy_audioprn::news::delete_news))
+          .route("/news/main", put().to(lemmy_audioprn::news::set_news_in_main))
+          .route("/post_script", get().to(lemmy_audioprn::script::get_post_script))
+          .route("/post_script", put().to(lemmy_audioprn::script::set_post_script))
+          .route("/script_watermark", post().to(lemmy_audioprn::script::check_watermark))
+          .route("/creator_pin", get().to(lemmy_audioprn::creator_page::get_creator_pin))
+          .route("/creator_pin", put().to(lemmy_audioprn::creator_page::set_creator_pin))
+          .route("/creator_stats", get().to(lemmy_audioprn::creator_page::get_creator_stats))
+          .route("/taboo_tags", get().to(lemmy_audioprn::post::get_taboo_tags))
+          .route(
+            "/credited_posts",
+            get().to(lemmy_audioprn::post::get_credited_posts),
+          )
+          .route(
+            "/credited_posts/hide",
+            put().to(lemmy_audioprn::post::hide_credited_post),
+          )
+          .route("/taboo_tags", put().to(lemmy_audioprn::post::set_taboo_tags))
+          .route(
+            "/creator_footers",
+            get().to(lemmy_audioprn::creators::get_creator_footers),
+          )
+          .route(
+            "/creator_footer",
+            put().to(lemmy_audioprn::creators::set_creator_footer),
+          )
+          .route("/post_poll", put().to(lemmy_audioprn::poll::create_post_poll))
+          .route("/post_polls", get().to(lemmy_audioprn::poll::get_post_polls))
+          .route(
+            "/post_poll/vote",
+            post().to(lemmy_audioprn::poll::vote_post_poll),
+          )
+          .route("/awards", get().to(lemmy_audioprn::awards::get_awards))
+          .route("/post_award", put().to(lemmy_audioprn::awards::give_post_award))
+          .route("/feed_prefs", get().to(lemmy_audioprn::feed::get_feed_prefs))
+          .route("/feed_prefs", put().to(lemmy_audioprn::feed::set_feed_prefs))
+          .route(
+            "/profile_comment/remove",
+            put().to(lemmy_audioprn::feed::remove_profile_comment),
+          )
+          .route(
+            "/creator_follow",
+            put().to(lemmy_audioprn::creators::follow_creator),
           ),
       )
       // Person / User actions

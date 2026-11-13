@@ -63,7 +63,7 @@ use std::{collections::HashSet, ops::Deref};
 use stringreader::StringReader;
 use url::Url;
 
-const MAX_TITLE_LENGTH: usize = 200;
+const MAX_TITLE_LENGTH: usize = 300; // audioprn: titles up to 300 characters
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ApubPost(pub Post);

@@ -23,6 +23,7 @@ default = []
 [dependencies]
 lemmy_api = { workspace = true }
 lemmy_api_crud = { workspace = true }
+lemmy_audioprn = { workspace = true }
 lemmy_utils = { workspace = true }
 lemmy_routes = { workspace = true }
 actix-web = { workspace = true }

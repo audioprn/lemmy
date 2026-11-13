@@ -5,7 +5,6 @@ use lemmy_utils::{
   error::{LemmyErrorType, LemmyResult},
   settings::structs::Settings,
 };
-use rosetta_i18n::{Language, LanguageId};
 use translations::Lang;
 
 pub mod account;
@@ -21,13 +20,10 @@ fn inbox_link(settings: &Settings) -> String {
   format!("{}/inbox", settings.get_protocol_and_hostname())
 }
 
-#[expect(clippy::expect_used)]
-pub fn user_language(local_user: &LocalUser) -> Lang {
-  let lang_id = LanguageId::new(&local_user.interface_language);
-  Lang::from_language_id(&lang_id).unwrap_or_else(|| {
-    let en = LanguageId::new("en");
-    Lang::from_language_id(&en).expect("default language")
-  })
+/// audioprn: the site is English-only, so emails (and logged-in RSS feeds) are always English,
+/// whatever language the user's browser sent at signup.
+pub fn user_language(_local_user: &LocalUser) -> Lang {
+  Lang::En
 }
 
 fn user_email(local_user_view: &LocalUserView) -> LemmyResult<SensitiveString> {

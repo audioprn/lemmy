@@ -92,7 +92,7 @@ pub fn is_valid_matrix_id(matrix_id: &str) -> LemmyResult<()> {
 pub fn is_valid_post_title(title: &str) -> LemmyResult<()> {
   let length = title.trim().chars().count();
   let check =
-    (3..=200).contains(&length) && !has_newline(title) && has_3_permitted_display_chars(title);
+    (3..=300).contains(&length) && !has_newline(title) && has_3_permitted_display_chars(title);
   if !check {
     Err(LemmyErrorType::InvalidPostTitle.into())
   } else {
@@ -359,6 +359,9 @@ mod tests {
   fn regex_checks() {
     assert!(is_valid_post_title("hi").is_err());
     assert!(is_valid_post_title("him").is_ok());
+    // audioprn: up to 300 characters, emoji included
+    assert!(is_valid_post_title(&"🔥".repeat(300)).is_ok());
+    assert!(is_valid_post_title(&"a".repeat(301)).is_err());
     assert!(is_valid_post_title("  him  ").is_ok());
     assert!(is_valid_post_title("n\n\n\n\nanother").is_err());
     assert!(is_valid_post_title("hello there!\n this is a test.").is_err());

@@ -140,6 +140,9 @@ pub struct GetPosts {
   pub search_url_only: Option<bool>,
   /// Only show posts which have this tag
   pub tag_id: Option<CommunityTagId>,
+  /// audioprn: comma-separated content filters (f_listener, m_listener, f_voices, m_voices,
+  /// no_taboo, no_rape, no_incest, scripts, audios). Leave out to show everything.
+  pub content_filters: Option<String>,
   pub page_cursor: Option<PaginationCursor>,
   /// For backwards compat with API v3 (not available on API v4)
   #[serde(skip)]

@@ -142,6 +142,15 @@ pub async fn register(
     LocalUser::check_is_email_taken(pool, email).await?;
   }
 
+  // audioprn: creator signup. Check the links before creating anything.
+  let creator_links = match &data.creator_content_links {
+    Some(content) => Some(lemmy_audioprn::validate_creator_links(
+      content,
+      data.creator_social_links.as_deref().unwrap_or_default(),
+    )?),
+    None => None,
+  };
+
   // Automatically set their application as accepted, if they created this with open registration.
   // Also fixes a bug which allows users to log in when registrations are changed to closed.
   let accepted_application = Some(!require_registration_application);
@@ -200,6 +209,11 @@ pub async fn register(
         };
 
         RegistrationApplication::create(&mut conn.into(), &form).await?;
+      }
+
+      // audioprn: creator signup, so queue a creator application for the admins.
+      if let Some((content, social)) = creator_links {
+        lemmy_audioprn::submit_application(&mut conn.into(), person.id, content, social).await?;
       }
 
       if let Some(inv) = local_user_invite {
