@@ -6,12 +6,12 @@
 use crate::{clean_link, is_verified_creator};
 use activitypub_federation::config::Data;
 use actix_web::web::{Json, Query};
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use diesel::{
   OptionalExtension,
   QueryableByName,
   sql_query,
-  sql_types::{Array, BigInt, Bool, Date, Integer, Nullable, Text},
+  sql_types::{Array, BigInt, Bool, Date, Integer, Nullable, Text, Timestamptz},
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use lemmy_api_utils::{context::LemmyContext, utils::check_local_user_banned_or_deleted};
@@ -83,17 +83,52 @@ pub struct MasterlistEntry {
 pub struct MasterlistResponse {
   pub categories: Vec<MasterlistCategory>,
   pub entries: Vec<MasterlistEntry>,
+  /// The creator's posts, when asked for.
+  pub posts: Vec<MasterlistPost>,
+  /// The viewer's saved posts and favourite entries on this masterlist.
+  pub saved_posts: Vec<i32>,
+  pub favourite_entries: Vec<i32>,
+}
+
+/// A creator's post on their masterlist.
+#[derive(Debug, Serialize, QueryableByName)]
+pub struct MasterlistPost {
+  #[diesel(sql_type = Integer)]
+  pub id: i32,
+  #[diesel(sql_type = Text)]
+  pub name: String,
+  #[diesel(sql_type = Timestamptz)]
+  pub published_at: DateTime<Utc>,
+  #[diesel(sql_type = Nullable<Text>)]
+  pub url: Option<String>,
+  /// The start of the text.
+  #[diesel(sql_type = Text)]
+  pub body: String,
+  /// Its tags (in capitals, as the content filters read them).
+  #[diesel(sql_type = Array<Text>)]
+  pub tags: Vec<String>,
+  /// "role:name", e.g. "writer:u/anna".
+  #[diesel(sql_type = Array<Text>)]
+  pub credits: Vec<String>,
+  /// On the creator's own page rather than the Content page.
+  #[diesel(sql_type = Bool)]
+  pub creator_page: bool,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct GetMasterlist {
   pub person_id: i32,
+  /// Include the creator's posts.
+  #[serde(default)]
+  pub posts: bool,
 }
 
-/// GET /masterlist?person_id=1: a creator's categories and entries, newest first.
+/// GET /masterlist?person_id=1[&posts=true]: a creator's categories and entries (and posts),
+/// newest first, with the viewer's saved posts and favourite entries.
 pub async fn get_masterlist(
   Query(data): Query<GetMasterlist>,
   context: Data<LemmyContext>,
+  local_user_view: Option<LocalUserView>,
 ) -> LemmyResult<Json<MasterlistResponse>> {
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;
@@ -112,10 +147,83 @@ pub async fn get_masterlist(
   .bind::<Integer, _>(data.person_id)
   .load(conn)
   .await?;
+  let posts = if data.posts {
+    sql_query(
+      "SELECT p.id, p.name, p.published_at, p.url, left(coalesce(p.body, ''), 600) AS body,
+         coalesce(t.tags, '{}') AS tags,
+         coalesce((SELECT array_agg(pc.role || ':' || pc.name) FROM post_credit pc
+           WHERE pc.post_id = p.id), '{}') AS credits,
+         c.name = 'creators' AS creator_page
+       FROM post p JOIN community c ON c.id = p.community_id
+       LEFT JOIN post_filter_tags t ON t.post_id = p.id
+       WHERE p.creator_id = $1 AND NOT p.deleted AND NOT p.removed
+         AND p.scheduled_publish_time_at IS NULL
+       ORDER BY p.published_at DESC",
+    )
+    .bind::<Integer, _>(data.person_id)
+    .load(conn)
+    .await?
+  } else {
+    vec![]
+  };
+  let (saved_posts, favourite_entries) = match &local_user_view {
+    Some(viewer) => {
+      let ids = |sql| {
+        sql_query(sql)
+          .bind::<Integer, _>(viewer.person.id.0)
+          .bind::<Integer, _>(data.person_id)
+      };
+      let saved: Vec<Id> = ids(
+        "SELECT pa.post_id AS id FROM post_actions pa JOIN post p ON p.id = pa.post_id
+         WHERE pa.person_id = $1 AND pa.saved_at IS NOT NULL AND p.creator_id = $2",
+      )
+      .load(conn)
+      .await?;
+      let favourites: Vec<Id> = ids(
+        "SELECT f.entry_id AS id FROM masterlist_favourite f
+         JOIN masterlist_entry e ON e.id = f.entry_id WHERE f.person_id = $1 AND e.person_id = $2",
+      )
+      .load(conn)
+      .await?;
+      (
+        saved.into_iter().map(|i| i.id).collect(),
+        favourites.into_iter().map(|i| i.id).collect(),
+      )
+    }
+    None => (vec![], vec![]),
+  };
   Ok(Json(MasterlistResponse {
     categories,
     entries,
+    posts,
+    saved_posts,
+    favourite_entries,
   }))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetMasterlistFavourite {
+  pub entry_id: i32,
+  pub favourite: bool,
+}
+
+/// PUT /masterlist/favourite: the logged-in user (un)favourites a masterlist entry.
+pub async fn set_favourite(
+  Json(data): Json<SetMasterlistFavourite>,
+  context: Data<LemmyContext>,
+  local_user_view: LocalUserView,
+) -> LemmyResult<Json<SetMasterlistFavourite>> {
+  let mut pool = context.pool();
+  sql_query(if data.favourite {
+    "INSERT INTO masterlist_favourite (person_id, entry_id) VALUES ($1, $2) ON CONFLICT DO NOTHING"
+  } else {
+    "DELETE FROM masterlist_favourite WHERE person_id = $1 AND entry_id = $2"
+  })
+  .bind::<Integer, _>(local_user_view.person.id.0)
+  .bind::<Integer, _>(data.entry_id)
+  .execute(&mut get_conn(&mut pool).await?)
+  .await?;
+  Ok(Json(data))
 }
 
 /// Only verified creators (and admins) keep a masterlist.
@@ -216,7 +324,15 @@ pub async fn set_categories(
       Ok(())
     })
     .await?;
-  get_masterlist(Query(GetMasterlist { person_id: me }), context).await
+  get_masterlist(
+    Query(GetMasterlist {
+      person_id: me,
+      posts: false,
+    }),
+    context,
+    None,
+  )
+  .await
 }
 
 #[derive(QueryableByName)]

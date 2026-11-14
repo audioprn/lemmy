@@ -484,6 +484,10 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
           )
           .route("/masterlist/entry", put().to(lemmy_audioprn::masterlist::save_entry))
           .route(
+            "/masterlist/favourite",
+            put().to(lemmy_audioprn::masterlist::set_favourite),
+          )
+          .route(
             "/masterlist/entry",
             delete().to(lemmy_audioprn::masterlist::delete_entry),
           )
