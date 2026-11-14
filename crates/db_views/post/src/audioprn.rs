@@ -8,10 +8,10 @@
 ///   show). Leaving both out shows only posts without a listener tag.
 /// - `f_voices`, `m_voices`: only posts with these voices.
 /// - `no_taboo`, `no_rape`, `no_incest`: hide posts with these tags.
-/// - `sfw`: only posts tagged [SFW].
 /// - `scripts`, `audios`: only posts with a script / audio flair.
 /// - `followed`: only posts by creators the user follows (ignored for guests).
-/// - `content_page`: the Content page: no posts kept off it, no creators' page posts.
+/// - `content_page`: the Content page: no posts kept off it, no creators' page posts, and no
+///   posts tagged [SFW] unless `sfw` is on (the Content page is NSFW only by default).
 /// - `my_recent`, `my_feed`: the two parts of the user's My audioprn feed.
 /// - `saved`: only the user's saved posts.
 pub fn content_filter_sql(filters: &str, my_person_id: Option<i32>) -> String {
@@ -28,11 +28,7 @@ pub fn content_filter_sql(filters: &str, my_person_id: Option<i32>) -> String {
       has("m_listener")
     ))
   )];
-  for (name, cond) in [
-    ("f_voices", "t.voice_f"),
-    ("m_voices", "t.voice_m"),
-    ("sfw", "'SFW' = ANY (t.tags)"),
-  ] {
+  for (name, cond) in [("f_voices", "t.voice_f"), ("m_voices", "t.voice_m")] {
     if has(name) {
       conds.push(tags(cond));
     }
@@ -66,6 +62,9 @@ pub fn content_filter_sql(filters: &str, my_person_id: Option<i32>) -> String {
        (SELECT 1 FROM community c WHERE c.id = post.community_id AND c.name = 'creators')"
         .into(),
     );
+    if !has("sfw") {
+      conds.push(format!("NOT {}", tags("'SFW' = ANY (t.tags)")));
+    }
   }
   // My audioprn (see the audioprn_my_feed migration): `my_recent` = followed creators' posts from
   // the past 7 days, `my_feed` = everything else in the user's feed.
