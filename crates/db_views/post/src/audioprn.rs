@@ -8,6 +8,7 @@
 ///   show). Leaving both out shows only posts without a listener tag.
 /// - `f_voices`, `m_voices`: only posts with these voices.
 /// - `no_taboo`, `no_rape`, `no_incest`: hide posts with these tags.
+/// - `sfw`: only posts tagged [SFW].
 /// - `scripts`, `audios`: only posts with a script / audio flair.
 /// - `followed`: only posts by creators the user follows (ignored for guests).
 /// - `content_page`: the Content page: no posts kept off it, no creators' page posts.
@@ -27,7 +28,11 @@ pub fn content_filter_sql(filters: &str, my_person_id: Option<i32>) -> String {
       has("m_listener")
     ))
   )];
-  for (name, cond) in [("f_voices", "t.voice_f"), ("m_voices", "t.voice_m")] {
+  for (name, cond) in [
+    ("f_voices", "t.voice_f"),
+    ("m_voices", "t.voice_m"),
+    ("sfw", "'SFW' = ANY (t.tags)"),
+  ] {
     if has(name) {
       conds.push(tags(cond));
     }
