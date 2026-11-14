@@ -79,6 +79,12 @@ pub async fn finish_import(
   .bind::<Timestamptz, _>(date)
   .execute(conn)
   .await?;
+  // Profile pages sort by their own copy of the date.
+  sql_query("UPDATE person_content_combined SET published_at = $2 WHERE post_id = $1")
+    .bind::<Integer, _>(post_id.0)
+    .bind::<Timestamptz, _>(date)
+    .execute(conn)
+    .await?;
   sql_query("INSERT INTO reddit_import (person_id, reddit_id, post_id) VALUES ($1, $2, $3)")
     .bind::<Integer, _>(person_id.0)
     .bind::<Text, _>(reddit_id)
