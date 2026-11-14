@@ -477,6 +477,16 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
             post().to(lemmy_api_crud::post::reddit_import::import_reddit_post),
           )
           .route("/reddit_imports", get().to(lemmy_audioprn::reddit::list_imports))
+          .route("/masterlist", get().to(lemmy_audioprn::masterlist::get_masterlist))
+          .route(
+            "/masterlist/categories",
+            put().to(lemmy_audioprn::masterlist::set_categories),
+          )
+          .route("/masterlist/entry", put().to(lemmy_audioprn::masterlist::save_entry))
+          .route(
+            "/masterlist/entry",
+            delete().to(lemmy_audioprn::masterlist::delete_entry),
+          )
           .route("/taboo_tags", get().to(lemmy_audioprn::post::get_taboo_tags))
           .route(
             "/credited_posts",
