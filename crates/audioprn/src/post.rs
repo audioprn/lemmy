@@ -25,6 +25,11 @@ diesel::table! {
   }
 }
 
+/// A space between tags that touch: "[F4M][Romance]" becomes "[F4M] [Romance]".
+pub fn space_tags(title: &str) -> String {
+  title.replace("][", "] [")
+}
+
 const ROLES: [&str; 3] = ["writer", "editor", "voice_actor"];
 const MAX_CREDITS: usize = 30;
 const MAX_NAME_LENGTH: usize = 100;

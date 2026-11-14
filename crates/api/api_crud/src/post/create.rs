@@ -45,10 +45,12 @@ use lemmy_utils::{
 };
 
 pub async fn create_post(
-  Json(data): Json<CreatePost>,
+  Json(mut data): Json<CreatePost>,
   context: Data<LemmyContext>,
   local_user_view: LocalUserView,
 ) -> LemmyResult<Json<PostResponse>> {
+  // audioprn: "[tag][tag]" in titles becomes "[tag] [tag]".
+  data.name = lemmy_audioprn::post::space_tags(&data.name);
   honeypot_check(&data.honeypot)?;
   // audioprn: only verified creators, moderators and admins can post.
   lemmy_audioprn::check_can_post(&mut context.pool(), &local_user_view, data.community_id).await?;

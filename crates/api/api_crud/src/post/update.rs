@@ -48,10 +48,12 @@ use lemmy_utils::{
 use std::ops::Deref;
 
 pub async fn edit_post(
-  Json(data): Json<EditPost>,
+  Json(mut data): Json<EditPost>,
   context: Data<LemmyContext>,
   local_user_view: LocalUserView,
 ) -> LemmyResult<Json<PostResponse>> {
+  // audioprn: "[tag][tag]" in titles becomes "[tag] [tag]".
+  data.name = data.name.map(|n| lemmy_audioprn::post::space_tags(&n));
   let local_site = SiteView::read_local(&mut context.pool()).await?.local_site;
   let local_instance_id = local_user_view.person.instance_id;
   let url = diesel_url_update(data.url.as_deref())?;
