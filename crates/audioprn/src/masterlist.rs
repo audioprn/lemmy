@@ -522,8 +522,15 @@ pub async fn import_entries(
       .optional()?
       .map(|p| p.post_id);
     }
-    entry.id = sql_query(
-      "SELECT id FROM masterlist_entry WHERE person_id = $1 AND (post_id = $2
+    #[derive(QueryableByName)]
+    struct Earlier {
+      #[diesel(sql_type = Integer)]
+      id: i32,
+      #[diesel(sql_type = Array<Text>)]
+      links: Vec<String>,
+    }
+    let earlier = sql_query(
+      "SELECT id, links FROM masterlist_entry WHERE person_id = $1 AND (post_id = $2
          OR ($2 IS NULL AND post_id IS NULL AND lower(title) = lower($3)
            AND date IS NOT DISTINCT FROM $4)) LIMIT 1",
     )
@@ -531,10 +538,19 @@ pub async fn import_entries(
     .bind::<Nullable<Integer>, _>(entry.post_id)
     .bind::<Text, _>(&entry.title)
     .bind::<Nullable<Date>, _>(entry.date)
-    .get_result::<Id>(conn)
+    .get_result::<Earlier>(conn)
     .await
-    .optional()?
-    .map_or(0, |i| i.id);
+    .optional()?;
+    if let Some(earlier) = earlier {
+      entry.id = earlier.id;
+      // The same audio from another site's sheet (e.g. Patreon, then SubscribeStar): keep both
+      // sites' links.
+      for link in earlier.links {
+        if !entry.links.contains(&link) {
+          entry.links.push(link);
+        }
+      }
+    }
     if entry.id == 0 {
       result.added += 1;
     } else {
