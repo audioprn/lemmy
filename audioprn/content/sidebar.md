@@ -4,6 +4,6 @@ Free Audio Porn for and by consenting humans 18+. Links to voiced and written fi
 
 - **Verified creators** post links to their full and free audios and scripts. Nothing is hosted here.
 - **Everyone** with an account can comment, react, and follow creators.
-- See something that breaks the rules? Use **Report**, and a moderator will review it.
+- See something that breaks the rules? [Report it!](/report)
 
 Want to post your work? [Sign up as a creator](/signup/creator) with three links to your work, and an admin will verify you.
