@@ -18,6 +18,7 @@ pub mod post;
 pub mod reaction;
 pub mod reddit;
 pub mod script;
+pub mod search;
 
 use activitypub_federation::config::Data;
 use actix_web::web::{Json, Query};

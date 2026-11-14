@@ -471,24 +471,39 @@ impl PostQuery<'_> {
     }
 
     // The search term
-    if let Some(search_term) = self.search_term {
-      let searcher = fuzzy_search(&search_term);
-
-      let name_or_title_filter = post::name.ilike(searcher.clone());
-
+    // audioprn: searches use gwasi's syntax (see `audioprn::search_sql`), together with the
+    // user's saved search on the Content page.
+    let mut searches = vec![];
+    if let Some(search_term) = &self.search_term {
       // A url / cross-post search
-      query = if self.search_url_only.unwrap_or_default() {
+      if self.search_url_only.unwrap_or_default() {
         // Parse and normalize the url, removing tracking parameters (same logic which is used
         // when creating a new post).
-        let normalized_url = Url::parse(&search_term).map(|u| clean_url(&u).to_string())?;
+        let normalized_url = Url::parse(search_term).map(|u| clean_url(&u).to_string())?;
 
-        query.filter(post::url.eq(normalized_url))
+        query = query.filter(post::url.eq(normalized_url));
       } else if self.search_title_only.unwrap_or_default() {
-        query.filter(name_or_title_filter)
+        query = query.filter(post::name.ilike(fuzzy_search(search_term)));
       } else {
-        let body_or_description_filter = post::body.ilike(searcher.clone());
-        query.filter(name_or_title_filter.or(body_or_description_filter))
+        searches.push(search_term.clone());
       }
+    }
+    let content_page = self
+      .content_filters
+      .as_deref()
+      .is_some_and(|f| f.split(',').any(|n| n == "content_page"));
+    if let (true, Some(person_id)) = (content_page, my_person_id) {
+      searches.extend(crate::audioprn::saved_search(pool, person_id.0).await?);
+    }
+    if !searches.is_empty() {
+      let searches: Vec<&str> = searches.iter().map(String::as_str).collect();
+      let (cond, params) =
+        crate::audioprn::search_sql(&searches).map_err(LemmyErrorType::Unknown)?;
+      query = query.filter(
+        diesel::dsl::sql::<diesel::sql_types::Bool>(&format!("(SELECT {cond} FROM (SELECT "))
+          .bind::<diesel::sql_types::Array<diesel::sql_types::Text>, _>(params)
+          .sql(" AS p) s)"),
+      );
     }
 
     if !self.show_nsfw.unwrap_or(self.local_user.show_nsfw(site)) {
