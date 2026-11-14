@@ -472,6 +472,11 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
           .route("/post_draft", get().to(lemmy_audioprn::drafts::get_draft))
           .route("/post_draft", put().to(lemmy_audioprn::drafts::save_draft))
           .route("/post_draft", delete().to(lemmy_audioprn::drafts::delete_draft))
+          .route(
+            "/reddit_import",
+            post().to(lemmy_api_crud::post::reddit_import::import_reddit_post),
+          )
+          .route("/reddit_imports", get().to(lemmy_audioprn::reddit::list_imports))
           .route("/taboo_tags", get().to(lemmy_audioprn::post::get_taboo_tags))
           .route(
             "/credited_posts",

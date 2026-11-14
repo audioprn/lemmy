@@ -15,6 +15,7 @@ pub mod news;
 pub mod poll;
 pub mod post;
 pub mod reaction;
+pub mod reddit;
 pub mod script;
 
 use activitypub_federation::config::Data;

@@ -7,6 +7,7 @@ use lemmy_utils::error::{LemmyErrorType, LemmyResult};
 pub mod create;
 pub mod delete;
 pub mod read;
+pub mod reddit_import; // audioprn
 pub mod remove;
 pub mod update;
 
