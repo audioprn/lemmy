@@ -468,6 +468,8 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
           .route("/creator_pin", get().to(lemmy_audioprn::creator_page::get_creator_pin))
           .route("/creator_pin", put().to(lemmy_audioprn::creator_page::set_creator_pin))
           .route("/creator_stats", get().to(lemmy_audioprn::creator_page::get_creator_stats))
+          .route("/creator_page_pins", get().to(lemmy_audioprn::creator_page::get_page_pins))
+          .route("/creator_page_pin", put().to(lemmy_audioprn::creator_page::set_page_pin))
           .route("/post_drafts", get().to(lemmy_audioprn::drafts::list_drafts))
           .route("/post_draft", get().to(lemmy_audioprn::drafts::get_draft))
           .route("/post_draft", put().to(lemmy_audioprn::drafts::save_draft))
