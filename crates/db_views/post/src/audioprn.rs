@@ -14,6 +14,7 @@
 ///   posts tagged [SFW] unless `sfw` is on (the Content page is NSFW only by default).
 /// - `my_recent`, `my_feed`: the two parts of the user's My audioprn feed.
 /// - `saved`: only the user's saved posts.
+/// - `favourites`: only the user's favourite posts (♥).
 pub fn content_filter_sql(filters: &str, my_person_id: Option<i32>) -> String {
   let on: Vec<&str> = filters.split(',').map(str::trim).collect();
   let has = |name: &str| on.contains(&name);
@@ -81,6 +82,15 @@ pub fn content_filter_sql(filters: &str, my_person_id: Option<i32>) -> String {
       Some(id) => format!(
         "EXISTS (SELECT 1 FROM post_actions pa WHERE pa.post_id = post.id AND pa.person_id = \
          {id} AND pa.saved_at IS NOT NULL)"
+      ),
+      None => "FALSE".into(),
+    });
+  }
+  if has("favourites") {
+    conds.push(match my_person_id {
+      Some(id) => format!(
+        "EXISTS (SELECT 1 FROM post_favourite pf WHERE pf.post_id = post.id AND pf.person_id = \
+         {id})"
       ),
       None => "FALSE".into(),
     });

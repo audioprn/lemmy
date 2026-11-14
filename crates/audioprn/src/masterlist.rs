@@ -96,8 +96,8 @@ pub struct MasterlistResponse {
   pub entries: Vec<MasterlistEntry>,
   /// The creator's posts, when asked for.
   pub posts: Vec<MasterlistPost>,
-  /// The viewer's saved posts and favourite entries on this masterlist.
-  pub saved_posts: Vec<i32>,
+  /// The viewer's favourite posts and entries on this masterlist.
+  pub favourite_posts: Vec<i32>,
   pub favourite_entries: Vec<i32>,
 }
 
@@ -135,7 +135,7 @@ pub struct GetMasterlist {
 }
 
 /// GET /masterlist?person_id=1[&posts=true]: a creator's categories and entries (and posts),
-/// newest first, with the viewer's saved posts and favourite entries.
+/// newest first, with the viewer's favourite posts and entries.
 pub async fn get_masterlist(
   Query(data): Query<GetMasterlist>,
   context: Data<LemmyContext>,
@@ -163,7 +163,7 @@ pub async fn get_masterlist(
       categories: vec![],
       entries: vec![],
       posts: vec![],
-      saved_posts: vec![],
+      favourite_posts: vec![],
       favourite_entries: vec![],
     }));
   }
@@ -201,16 +201,16 @@ pub async fn get_masterlist(
   } else {
     vec![]
   };
-  let (saved_posts, favourite_entries) = match &local_user_view {
+  let (favourite_posts, favourite_entries) = match &local_user_view {
     Some(viewer) => {
       let ids = |sql| {
         sql_query(sql)
           .bind::<Integer, _>(viewer.person.id.0)
           .bind::<Integer, _>(data.person_id)
       };
-      let saved: Vec<Id> = ids(
-        "SELECT pa.post_id AS id FROM post_actions pa JOIN post p ON p.id = pa.post_id
-         WHERE pa.person_id = $1 AND pa.saved_at IS NOT NULL AND p.creator_id = $2",
+      let liked: Vec<Id> = ids(
+        "SELECT f.post_id AS id FROM post_favourite f JOIN post p ON p.id = f.post_id
+         WHERE f.person_id = $1 AND p.creator_id = $2",
       )
       .load(conn)
       .await?;
@@ -221,7 +221,7 @@ pub async fn get_masterlist(
       .load(conn)
       .await?;
       (
-        saved.into_iter().map(|i| i.id).collect(),
+        liked.into_iter().map(|i| i.id).collect(),
         favourites.into_iter().map(|i| i.id).collect(),
       )
     }
@@ -231,7 +231,7 @@ pub async fn get_masterlist(
     categories,
     entries,
     posts,
-    saved_posts,
+    favourite_posts,
     favourite_entries,
   }))
 }

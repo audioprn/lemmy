@@ -446,6 +446,10 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
             put().to(lemmy_audioprn::reaction::set_post_reaction),
           )
           .route(
+            "/post_favourite",
+            put().to(lemmy_audioprn::reaction::set_post_favourite),
+          )
+          .route(
             "/verified_creators",
             get().to(lemmy_audioprn::list_verified_creators),
           )

@@ -1,6 +1,6 @@
 //! audioprn emoji reactions on posts: one of five emoji per user per post, instead of votes.
 //! The post's engagement score is kept up to date by a database trigger
-//! (see the audioprn_post_reaction migration).
+//! (see the audioprn_post_reaction migration). Your own favourites (♥) come with them.
 
 use activitypub_federation::config::Data;
 use actix_web::web::{Json, Query};
@@ -22,6 +22,13 @@ diesel::table! {
   }
 }
 
+diesel::table! {
+  post_favourite (person_id, post_id) {
+    person_id -> Int4,
+    post_id -> Int4,
+  }
+}
+
 const EMOJI: [&str; 5] = ["fire", "gem", "black_heart", "pleading", "droplets"];
 const MAX_POST_IDS: usize = 100;
 
@@ -35,6 +42,8 @@ pub struct PostReactions {
   /// Awards given to the post (count per type), and whether the logged-in user gave one.
   pub awards: HashMap<String, i64>,
   pub awarded: bool,
+  /// The logged-in user marked it a favourite.
+  pub favourite: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -92,6 +101,19 @@ pub(crate) async fn load(
     if let Some(r) = by_post.get_mut(&post_id) {
       *r.awards.entry(kind).or_default() += 1;
       r.awarded |= Some(giver) == person_id;
+    }
+  }
+  if let Some(person_id) = person_id {
+    let favourites: Vec<i32> = post_favourite::table
+      .filter(post_favourite::person_id.eq(person_id))
+      .filter(post_favourite::post_id.eq_any(ids))
+      .select(post_favourite::post_id)
+      .load(conn)
+      .await?;
+    for post_id in favourites {
+      if let Some(r) = by_post.get_mut(&post_id) {
+        r.favourite = true;
+      }
     }
   }
   Ok(by_post.into_values().collect())
@@ -175,6 +197,58 @@ pub async fn set_post_reaction(
         .execute(conn)
         .await?;
       }
+    }
+  }
+  let reactions = load(&context, &[post_id], Some(person_id))
+    .await?
+    .pop()
+    .ok_or(LemmyErrorType::NotFound)?;
+  Ok(Json(reactions))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetPostFavourite {
+  pub post_id: PostId,
+  pub favourite: bool,
+}
+
+/// PUT /post_favourite: mark a post a favourite (♥), or not.
+pub async fn set_post_favourite(
+  Json(data): Json<SetPostFavourite>,
+  context: Data<LemmyContext>,
+  local_user_view: LocalUserView,
+) -> LemmyResult<Json<PostReactions>> {
+  let person_id = local_user_view.person.id.0;
+  let post_id = data.post_id.0;
+  {
+    let mut pool = context.pool();
+    let conn = &mut get_conn(&mut pool).await?;
+    if data.favourite {
+      // Only posts that exist and are visible.
+      let added = diesel::sql_query(
+        "INSERT INTO post_favourite (person_id, post_id)
+         SELECT $1, id FROM post WHERE id = $2 AND NOT deleted AND NOT removed
+         ON CONFLICT DO NOTHING",
+      )
+      .bind::<diesel::sql_types::Integer, _>(person_id)
+      .bind::<diesel::sql_types::Integer, _>(post_id)
+      .execute(conn)
+      .await?;
+      let exists = added > 0
+        || post_favourite::table
+          .find((person_id, post_id))
+          .select(post_favourite::post_id)
+          .first::<i32>(conn)
+          .await
+          .optional()?
+          .is_some();
+      if !exists {
+        return Err(LemmyErrorType::NotFound.into());
+      }
+    } else {
+      diesel::delete(post_favourite::table.find((person_id, post_id)))
+        .execute(conn)
+        .await?;
     }
   }
   let reactions = load(&context, &[post_id], Some(person_id))

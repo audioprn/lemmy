@@ -252,6 +252,9 @@ pub struct CreatorStats {
   /// Comments by others on their posts.
   #[diesel(sql_type = BigInt)]
   pub comments: i64,
+  /// Comments they wrote, anywhere.
+  #[diesel(sql_type = BigInt)]
+  pub comments_made: i64,
   /// Awards given to their posts.
   #[diesel(sql_type = BigInt)]
   pub awards: i64,
@@ -276,6 +279,8 @@ pub async fn get_creator_stats(
        (SELECT count(*) FROM post_reaction WHERE post_id IN (SELECT id FROM mine)) AS reactions,
        (SELECT count(*) FROM comment WHERE post_id IN (SELECT id FROM mine)
          AND creator_id <> $1 AND NOT deleted AND NOT removed) AS comments,
+       (SELECT count(*) FROM comment WHERE creator_id = $1
+         AND NOT deleted AND NOT removed) AS comments_made,
        (SELECT count(*) FROM post_award WHERE post_id IN (SELECT id FROM mine)) AS awards",
   )
   .bind::<Integer, _>(me.0)

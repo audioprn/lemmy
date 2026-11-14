@@ -144,6 +144,10 @@ impl PostView {
   /// This uses the post_actions table as the base, for faster filtering for some queries
   fn post_action_joins(my_person_id: Option<PersonId>, local_instance_id: InstanceId) -> _ {
     let community_join = community::table.on(post::community_id.eq(community::id));
+    // audioprn: the post's creator. A plain join to person used post_actions.person_id, so
+    // read and hidden posts showed the reader as their creator (and blocks were checked against
+    // the reader).
+    let creator_join = person::table.on(post::creator_id.eq(person::id));
     let my_community_actions_join: my_community_actions_join =
       my_community_actions_join(my_person_id);
     let my_local_user_admin_join: my_local_user_admin_join = my_local_user_admin_join(my_person_id);
@@ -157,7 +161,7 @@ impl PostView {
 
     post_actions::table
       .inner_join(post::table)
-      .inner_join(person::table)
+      .inner_join(creator_join)
       .inner_join(community_join)
       .left_join(image_details_join())
       .left_join(creator_home_instance_actions_join())
