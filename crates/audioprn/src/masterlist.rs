@@ -13,7 +13,7 @@ use diesel::{
   sql_query,
   sql_types::{Array, BigInt, Bool, Date, Integer, Nullable, Text, Timestamptz},
 };
-use diesel_async::{AsyncConnection, RunQueryDsl};
+use diesel_async::{AsyncConnection, AsyncPgConnection, RunQueryDsl};
 use lemmy_api_utils::{context::LemmyContext, utils::check_local_user_banned_or_deleted};
 use lemmy_db_views_local_user::LocalUserView;
 use lemmy_diesel_utils::connection::get_conn;
@@ -24,8 +24,11 @@ const MAX_CATEGORIES: usize = 200;
 const MAX_ALIASES: usize = 400;
 const MAX_ALSO: usize = 20;
 const MAX_ENTRIES: i64 = 5000;
-/// Tags, categories and links on one entry.
+/// Categories and links on one entry.
 const MAX_LIST: usize = 50;
+const MAX_TAGS: usize = 100;
+/// Writers and collaborators, as written (big collabs list many).
+const MAX_CREDITS: usize = 1000;
 const MAX_NAME: usize = 60;
 const MAX_TITLE: usize = 300;
 const MAX_DESCRIPTION: usize = 5000;
@@ -77,6 +80,10 @@ pub struct MasterlistEntry {
   pub script_link: Option<String>,
   #[diesel(sql_type = Bool)]
   pub paywalled: bool,
+  /// The creator's post this entry adds details to (from their spreadsheet), if any.
+  #[serde(default)]
+  #[diesel(sql_type = Nullable<Integer>)]
+  pub post_id: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -141,7 +148,7 @@ pub async fn get_masterlist(
   .await?;
   let entries = sql_query(
     "SELECT id, title, description, date, duration, writer, writer_link, credits, tags,
-       categories, links, script_link, paywalled
+       categories, links, script_link, paywalled, post_id
      FROM masterlist_entry WHERE person_id = $1 ORDER BY date DESC NULLS LAST, id DESC",
   )
   .bind::<Integer, _>(data.person_id)
@@ -341,13 +348,8 @@ struct Id {
   id: i32,
 }
 
-/// PUT /masterlist/entry: add (id 0) or update one of the creator's entries.
-pub async fn save_entry(
-  Json(e): Json<MasterlistEntry>,
-  context: Data<LemmyContext>,
-  local_user_view: LocalUserView,
-) -> LemmyResult<Json<MasterlistEntry>> {
-  check_creator(&context, &local_user_view).await?;
+/// Trimmed and checked.
+fn clean_entry(e: MasterlistEntry) -> LemmyResult<MasterlistEntry> {
   let entry = MasterlistEntry {
     id: e.id,
     title: e.title.trim().to_string(),
@@ -357,7 +359,7 @@ pub async fn save_entry(
     writer: e.writer.trim().to_string(),
     writer_link: clean_link_opt(e.writer_link)?,
     credits: e.credits.trim().to_string(),
-    tags: clean_list(e.tags, MAX_LIST, MAX_NAME)?,
+    tags: clean_list(e.tags, MAX_TAGS, MAX_NAME)?,
     categories: e
       .categories
       .map(|c| clean_list(c, MAX_LIST, MAX_NAME))
@@ -370,26 +372,33 @@ pub async fn save_entry(
       .collect::<LemmyResult<_>>()?,
     script_link: clean_link_opt(e.script_link)?,
     paywalled: e.paywalled,
+    post_id: e.post_id,
   };
   if entry.title.is_empty()
     || entry.title.chars().count() > MAX_TITLE
     || entry.description.chars().count() > MAX_DESCRIPTION
     || entry.duration.chars().count() > MAX_NAME
-    || entry.writer.chars().count() > MAX_NAME * 2
-    || entry.credits.chars().count() > MAX_TITLE
+    || entry.writer.chars().count() > MAX_TITLE
+    || entry.credits.chars().count() > MAX_CREDITS
     || entry.links.len() > MAX_LIST
   {
     return Err(invalid());
   }
-  let me = local_user_view.person.id.0;
-  let mut pool = context.pool();
-  let conn = &mut get_conn(&mut pool).await?;
+  Ok(entry)
+}
+
+/// Adds (id 0) or updates one of the creator's entries; returns its id.
+async fn write_entry(
+  conn: &mut AsyncPgConnection,
+  me: i32,
+  entry: &MasterlistEntry,
+) -> LemmyResult<i32> {
   // Both queries take the same parameters ($2 = id, $15 = the most entries one creator can have).
   let query = if entry.id == 0 {
     sql_query(
       "INSERT INTO masterlist_entry (person_id, title, description, date, duration, writer,
-         writer_link, credits, tags, categories, links, script_link, paywalled)
-       SELECT $1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+         writer_link, credits, tags, categories, links, script_link, paywalled, post_id)
+       SELECT $1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $16
        WHERE $2 = 0 AND (SELECT count(*) FROM masterlist_entry WHERE person_id = $1) < $15
        RETURNING id",
     )
@@ -397,11 +406,12 @@ pub async fn save_entry(
     sql_query(
       "UPDATE masterlist_entry SET title = $3, description = $4, date = $5, duration = $6,
          writer = $7, writer_link = $8, credits = $9, tags = $10, categories = $11, links = $12,
-         script_link = $13, paywalled = $14, updated_at = now()
+         script_link = $13, paywalled = $14, post_id = coalesce($16, post_id), updated_at = now()
        WHERE id = $2 AND person_id = $1 AND $15 > 0 RETURNING id",
     )
   };
-  let id = query
+  Ok(
+    query
     .bind::<Integer, _>(me)
     .bind::<Integer, _>(entry.id)
     .bind::<Text, _>(&entry.title)
@@ -417,6 +427,7 @@ pub async fn save_entry(
     .bind::<Nullable<Text>, _>(&entry.script_link)
     .bind::<Bool, _>(entry.paywalled)
     .bind::<BigInt, _>(MAX_ENTRIES)
+    .bind::<Nullable<Integer>, _>(entry.post_id)
     .get_result::<Id>(conn)
     .await
     .optional()?
@@ -425,8 +436,116 @@ pub async fn save_entry(
     } else {
       LemmyErrorType::NotFound
     })?
-    .id;
+    .id,
+  )
+}
+
+/// PUT /masterlist/entry: add (id 0) or update one of the creator's entries.
+pub async fn save_entry(
+  Json(e): Json<MasterlistEntry>,
+  context: Data<LemmyContext>,
+  local_user_view: LocalUserView,
+) -> LemmyResult<Json<MasterlistEntry>> {
+  check_creator(&context, &local_user_view).await?;
+  // Only an import links an entry to a post.
+  let entry = clean_entry(MasterlistEntry { post_id: None, ..e })?;
+  let mut pool = context.pool();
+  let conn = &mut get_conn(&mut pool).await?;
+  let id = write_entry(conn, local_user_view.person.id.0, &entry).await?;
   Ok(Json(MasterlistEntry { id, ..entry }))
+}
+
+const MAX_IMPORT: usize = 200;
+
+#[derive(Debug, Deserialize)]
+pub struct ImportRow {
+  #[serde(flatten)]
+  pub entry: MasterlistEntry,
+  /// From the row's Reddit link: the creator's post imported from it gets these details.
+  pub reddit_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImportMasterlist {
+  pub entries: Vec<ImportRow>,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct ImportMasterlistResponse {
+  pub added: i32,
+  pub updated: i32,
+  /// Of those, the ones adding details to the creator's posts.
+  pub posts: i32,
+  /// Rows that weren't valid (no title, a bad link…).
+  pub skipped: i32,
+}
+
+#[derive(QueryableByName)]
+struct PostId {
+  #[diesel(sql_type = Integer)]
+  post_id: i32,
+}
+
+/// PUT /masterlist/import: up to 200 rows from the creator's spreadsheet. A row whose Reddit link
+/// matches one of their imported posts adds details to that post; other rows are audios on the
+/// masterlist. A row matching an earlier one (same post, or same title and date) updates it.
+pub async fn import_entries(
+  Json(data): Json<ImportMasterlist>,
+  context: Data<LemmyContext>,
+  local_user_view: LocalUserView,
+) -> LemmyResult<Json<ImportMasterlistResponse>> {
+  check_creator(&context, &local_user_view).await?;
+  if data.entries.len() > MAX_IMPORT {
+    return Err(invalid());
+  }
+  let me = local_user_view.person.id.0;
+  let mut pool = context.pool();
+  let conn = &mut get_conn(&mut pool).await?;
+  let mut result = ImportMasterlistResponse::default();
+  for row in data.entries {
+    let Ok(mut entry) = clean_entry(MasterlistEntry {
+      id: 0,
+      post_id: None,
+      ..row.entry
+    }) else {
+      result.skipped += 1;
+      continue;
+    };
+    if let Some(reddit_id) = row.reddit_id {
+      entry.post_id = sql_query(
+        "SELECT post_id FROM reddit_import WHERE person_id = $1 AND reddit_id = $2",
+      )
+      .bind::<Integer, _>(me)
+      .bind::<Text, _>(reddit_id)
+      .get_result::<PostId>(conn)
+      .await
+      .optional()?
+      .map(|p| p.post_id);
+    }
+    entry.id = sql_query(
+      "SELECT id FROM masterlist_entry WHERE person_id = $1 AND (post_id = $2
+         OR ($2 IS NULL AND post_id IS NULL AND lower(title) = lower($3)
+           AND date IS NOT DISTINCT FROM $4)) LIMIT 1",
+    )
+    .bind::<Integer, _>(me)
+    .bind::<Nullable<Integer>, _>(entry.post_id)
+    .bind::<Text, _>(&entry.title)
+    .bind::<Nullable<Date>, _>(entry.date)
+    .get_result::<Id>(conn)
+    .await
+    .optional()?
+    .map_or(0, |i| i.id);
+    if entry.id == 0 {
+      result.added += 1;
+    } else {
+      result.updated += 1;
+    }
+    if entry.post_id.is_some() {
+      result.posts += 1;
+    }
+    write_entry(conn, me, &entry).await?;
+  }
+  Ok(Json(result))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
