@@ -2,7 +2,8 @@
 //! (renewed 7 days after they last gave one). Verified creators also get 10 awards each month
 //! after a month with Content page posts. Unused awards don't carry over. One award per person per
 //! post (they pick the type: Goat, Kino, Dropped Crown, Uwu or Respect), not on their own posts,
-//! and it can't be taken back. Awards don't change Engagement.
+//! and it can't be taken back. Awards don't change Engagement. Posts imported from Reddit don't
+//! count as posting (they can carry any date).
 
 use crate::reaction::{PostReactions, load};
 use activitypub_federation::config::Data;
@@ -44,7 +45,8 @@ pub struct Awards {
 
 const AWARDS_SQL: &str = "SELECT
   (EXISTS (SELECT 1 FROM post WHERE creator_id = $1 AND NOT deleted
-      AND published_at > now() - interval '7 days')
+      AND published_at > now() - interval '7 days'
+      AND id NOT IN (SELECT post_id FROM reddit_import))
     OR EXISTS (SELECT 1 FROM comment WHERE creator_id = $1 AND NOT deleted
       AND published_at > now() - interval '7 days'))
   AND NOT EXISTS (SELECT 1 FROM post_award WHERE giver_id = $1 AND pool = 'weekly'
@@ -53,6 +55,7 @@ const AWARDS_SQL: &str = "SELECT
     AND EXISTS (SELECT 1 FROM post p JOIN community c ON c.id = p.community_id
       WHERE p.creator_id = $1 AND NOT p.deleted AND NOT p.removed AND c.name <> 'creators'
         AND NOT EXISTS (SELECT 1 FROM post_off_content o WHERE o.post_id = p.id)
+        AND p.id NOT IN (SELECT post_id FROM reddit_import)
         AND p.published_at >= date_trunc('month', now()) - interval '1 month'
         AND p.published_at < date_trunc('month', now()))
   THEN 10 - (SELECT count(*) FROM post_award WHERE giver_id = $1 AND pool = 'monthly'

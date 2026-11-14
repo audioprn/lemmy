@@ -52,10 +52,13 @@ pub async fn get_creator_pin(
 ) -> LemmyResult<Json<CreatorPinResponse>> {
   let is_creator = is_verified_creator(&mut context.pool(), PersonId(data.person_id)).await?;
   let mut pool = context.pool();
+  // Not shown once the creator's verification is revoked.
   let pin = sql_query(
-    "SELECT social_links, terms, boundaries, masterlists FROM creator_pin WHERE person_id = $1",
+    "SELECT social_links, terms, boundaries, masterlists FROM creator_pin
+     WHERE person_id = $1 AND $2",
   )
   .bind::<Integer, _>(data.person_id)
+  .bind::<diesel::sql_types::Bool, _>(is_creator)
   .get_result(&mut get_conn(&mut pool).await?)
   .await
   .optional()?;

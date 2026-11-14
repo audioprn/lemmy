@@ -477,7 +477,12 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
             post().to(lemmy_api_crud::post::reddit_import::import_reddit_post),
           )
           .route("/reddit_imports", get().to(lemmy_audioprn::reddit::list_imports))
-          .route("/masterlist", get().to(lemmy_audioprn::masterlist::get_masterlist))
+          // A whole masterlist in one reply, so it shares the search rate limit.
+          .service(
+            resource("/masterlist")
+              .wrap(rate_limit.search())
+              .route(get().to(lemmy_audioprn::masterlist::get_masterlist)),
+          )
           .route(
             "/masterlist/categories",
             put().to(lemmy_audioprn::masterlist::set_categories),

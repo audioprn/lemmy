@@ -37,7 +37,8 @@ pub async fn check_import(
   if reddit_id.is_empty()
     || reddit_id.len() > 12
     || !reddit_id.chars().all(|c| c.is_ascii_alphanumeric())
-    || date > Utc::now()
+    // At least a day old, so imports never fill the top of the Content page.
+    || date > Utc::now() - chrono::Duration::days(1)
     || date.year() < 2005
   {
     return Err(LemmyErrorType::Unknown("invalid_reddit_import".into()).into());

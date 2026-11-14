@@ -24,6 +24,10 @@ const MAX_CATEGORIES: usize = 200;
 const MAX_ALIASES: usize = 400;
 const MAX_ALSO: usize = 20;
 const MAX_ENTRIES: i64 = 5000;
+/// All of a creator's entries together (bytes), as the masterlist page loads them in one go.
+const MAX_ENTRIES_SIZE: i64 = 10_000_000;
+/// All of a creator's tag aliases together (bytes), for the same reason.
+const MAX_ALIASES_SIZE: usize = 200_000;
 /// Categories and links on one entry.
 const MAX_LIST: usize = 50;
 const MAX_TAGS: usize = 100;
@@ -139,6 +143,24 @@ pub async fn get_masterlist(
 ) -> LemmyResult<Json<MasterlistResponse>> {
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;
+  // Not shown once the creator's verification is revoked (admins keep one too).
+  let shown = sql_query(
+    "SELECT 1 AS id WHERE EXISTS (SELECT 1 FROM creator_application WHERE person_id = $1
+       AND approved) OR EXISTS (SELECT 1 FROM local_user WHERE person_id = $1 AND admin)",
+  )
+  .bind::<Integer, _>(data.person_id)
+  .get_result::<Id>(conn)
+  .await
+  .optional()?;
+  if shown.is_none() {
+    return Ok(Json(MasterlistResponse {
+      categories: vec![],
+      entries: vec![],
+      posts: vec![],
+      saved_posts: vec![],
+      favourite_entries: vec![],
+    }));
+  }
   let categories = sql_query(
     "SELECT name, icon, aliases, also FROM masterlist_category WHERE person_id = $1
      ORDER BY position",
@@ -305,6 +327,15 @@ pub async fn set_categories(
       also: clean_list(c.also, MAX_ALSO, MAX_NAME)?,
     });
   }
+  if categories
+    .iter()
+    .flat_map(|c| &c.aliases)
+    .map(String::len)
+    .sum::<usize>()
+    > MAX_ALIASES_SIZE
+  {
+    return Err(invalid());
+  }
   let me = local_user_view.person.id.0;
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;
@@ -393,22 +424,26 @@ async fn write_entry(
   me: i32,
   entry: &MasterlistEntry,
 ) -> LemmyResult<i32> {
-  // Both queries take the same parameters ($2 = id, $15 = the most entries one creator can have).
+  // Both queries take the same parameters ($2 = id, $15 = the most entries one creator can have,
+  // $17 = the most bytes their entries can add up to before this one).
+  const ROOM: &str = "(SELECT coalesce(sum(octet_length(e::text)), 0) FROM masterlist_entry e
+    WHERE e.person_id = $1) < $17";
   let query = if entry.id == 0 {
-    sql_query(
+    sql_query(format!(
       "INSERT INTO masterlist_entry (person_id, title, description, date, duration, writer,
          writer_link, credits, tags, categories, links, script_link, paywalled, post_id)
        SELECT $1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $16
        WHERE $2 = 0 AND (SELECT count(*) FROM masterlist_entry WHERE person_id = $1) < $15
-       RETURNING id",
-    )
+         AND {ROOM}
+       RETURNING id"
+    ))
   } else {
-    sql_query(
+    sql_query(format!(
       "UPDATE masterlist_entry SET title = $3, description = $4, date = $5, duration = $6,
          writer = $7, writer_link = $8, credits = $9, tags = $10, categories = $11, links = $12,
          script_link = $13, paywalled = $14, post_id = coalesce($16, post_id), updated_at = now()
-       WHERE id = $2 AND person_id = $1 AND $15 > 0 RETURNING id",
-    )
+       WHERE id = $2 AND person_id = $1 AND $15 > 0 AND {ROOM} RETURNING id"
+    ))
   };
   Ok(
     query
@@ -428,6 +463,7 @@ async fn write_entry(
     .bind::<Bool, _>(entry.paywalled)
     .bind::<BigInt, _>(MAX_ENTRIES)
     .bind::<Nullable<Integer>, _>(entry.post_id)
+    .bind::<BigInt, _>(MAX_ENTRIES_SIZE)
     .get_result::<Id>(conn)
     .await
     .optional()?

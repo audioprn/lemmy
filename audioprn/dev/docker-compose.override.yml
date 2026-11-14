@@ -39,5 +39,10 @@ services:
     image: axllent/mailpit:v1.27
     hostname: mailpit
     ports:
-      - "8025:8025"
+      - "127.0.0.1:8025:8025"
     restart: unless-stopped
+
+  postgres:
+    # The test database (default password) isn't opened to this computer or the network.
+    # To look inside: docker exec -it docker-postgres-1 psql -U lemmy
+    ports: !reset []

@@ -115,6 +115,14 @@ pub async fn get_post_script(
   let Some(mut script) = script else {
     return Ok(Json(PostScriptResponse { script: None }));
   };
+  // A deleted or removed post's script details are only for its writer and admins.
+  if !script.visible
+    && !local_user_view
+      .as_ref()
+      .is_some_and(|u| u.person.id.0 == script.creator_id || u.local_user.admin)
+  {
+    return Ok(Json(PostScriptResponse { script: None }));
+  }
   if data.text {
     let Some(user) = local_user_view else {
       return Err(LemmyErrorType::Unknown("log_in_to_read_scripts".into()).into());

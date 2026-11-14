@@ -29,6 +29,10 @@ The first build of the backend takes a while. Then:
 - Site: http://localhost:8880 (admin `lemmy` / `lemmylemmy`)
 - Email inbox: http://localhost:8025
 
+**Local testing only.** `audioprn/dev/lemmy.hjson` and the compose files hold default passwords and
+keys that are public in this repository. The real site needs its own config with new secrets, kept
+out of git.
+
 Apply the Phase 1 settings:
 
 ```bash
