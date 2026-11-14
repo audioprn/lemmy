@@ -534,6 +534,11 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
           )
           .route("/awards", get().to(lemmy_audioprn::awards::get_awards))
           .route("/post_award", put().to(lemmy_audioprn::awards::give_post_award))
+          .route("/award_types", get().to(lemmy_audioprn::awards::get_award_types))
+          .route("/award_type", post().to(lemmy_audioprn::awards::create_award_type))
+          .route("/award_type", put().to(lemmy_audioprn::awards::edit_award_type))
+          .route("/award_settings", get().to(lemmy_audioprn::awards::get_award_settings))
+          .route("/award_settings", put().to(lemmy_audioprn::awards::set_award_settings))
           .route("/feed_prefs", get().to(lemmy_audioprn::feed::get_feed_prefs))
           .route("/feed_prefs", put().to(lemmy_audioprn::feed::set_feed_prefs))
           .route(
