@@ -104,6 +104,13 @@ pub async fn create_comment(
     }
     check_comment_depth(parent)?;
     check_comment_deleted_or_removed(parent)?;
+    // audioprn: no replying to someone who blocked you.
+    lemmy_audioprn::blocks::check_not_blocked_by(
+      &mut context.pool(),
+      Some(&local_user_view),
+      parent.creator_id,
+    )
+    .await?;
   }
 
   let mut comment_form = CommentInsertForm {

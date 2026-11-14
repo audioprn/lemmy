@@ -319,7 +319,8 @@ pub async fn get_credited_posts(
   context: Data<LemmyContext>,
   local_user_view: Option<LocalUserView>,
 ) -> LemmyResult<Json<CreditedPostsResponse>> {
-  let is_me = local_user_view.is_some_and(|u| u.person.id.0 == data.person_id);
+  let me = local_user_view.map(|u| u.person.id.0);
+  let is_me = me == Some(data.person_id);
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;
   let posts = diesel::sql_query(
@@ -327,13 +328,14 @@ pub async fn get_credited_posts(
      JOIN person pe ON pe.id = p.creator_id
      LEFT JOIN credited_post_hidden h ON h.person_id = $1 AND h.post_id = p.id
      WHERE NOT p.deleted AND NOT p.removed AND p.creator_id <> $1
-       AND ($2 OR h.post_id IS NULL)
+       AND ($2 OR h.post_id IS NULL) AND NOT audioprn_blocked($3, p.creator_id)
        AND EXISTS (SELECT 1 FROM post_credit pc WHERE pc.post_id = p.id
          AND lower(pc.name) = 'u/' || lower((SELECT name FROM person WHERE id = $1)))
      ORDER BY p.published_at DESC LIMIT 50",
   )
   .bind::<diesel::sql_types::Integer, _>(data.person_id)
   .bind::<diesel::sql_types::Bool, _>(is_me)
+  .bind::<diesel::sql_types::Nullable<diesel::sql_types::Integer>, _>(me)
   .load(conn)
   .await?;
   Ok(Json(CreditedPostsResponse { posts }))

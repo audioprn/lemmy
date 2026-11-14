@@ -153,6 +153,8 @@ impl PersonQuery<'_> {
     .select(PersonView::as_select())
     .limit(limit)
     .filter(person::deleted.eq(false))
+    // audioprn: people who blocked me don't show up in search.
+    .filter(lemmy_db_schema_file::schema::person_actions::blocked_by_at.is_null())
     .into_boxed();
 
     if self.community_id.is_some() {

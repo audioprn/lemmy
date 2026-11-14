@@ -115,6 +115,12 @@ pub async fn get_post_script(
   let Some(mut script) = script else {
     return Ok(Json(PostScriptResponse { script: None }));
   };
+  crate::blocks::check_not_blocked_by(
+    &mut context.pool(),
+    local_user_view.as_ref(),
+    lemmy_db_schema_file::PersonId(script.creator_id),
+  )
+  .await?;
   // A deleted or removed post's script details are only for its writer and admins.
   if !script.visible
     && !local_user_view

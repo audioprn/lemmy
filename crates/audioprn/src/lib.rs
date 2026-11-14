@@ -7,6 +7,7 @@
 //! Kept in its own crate, with its own table definition, so upstream Lemmy merges stay simple.
 
 pub mod awards;
+pub mod blocks;
 pub mod creator_page;
 pub mod creators;
 pub mod drafts;

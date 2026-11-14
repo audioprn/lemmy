@@ -19,6 +19,8 @@ pub fn filter_blocked() -> _ {
     .or(community_actions::followed_at.is_not_null())
     .and(community_actions::blocked_at.is_null())
     .and(person_actions::blocked_at.is_null())
+    // audioprn: also hide people who blocked me (blocks work both ways).
+    .and(person_actions::blocked_by_at.is_null())
     .and(
       my_instance_persons_actions
         .field(instance_actions::blocked_persons_at)

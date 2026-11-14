@@ -141,6 +141,12 @@ pub async fn get_masterlist(
   context: Data<LemmyContext>,
   local_user_view: Option<LocalUserView>,
 ) -> LemmyResult<Json<MasterlistResponse>> {
+  crate::blocks::check_not_blocked_by(
+    &mut context.pool(),
+    local_user_view.as_ref(),
+    lemmy_db_schema_file::PersonId(data.person_id),
+  )
+  .await?;
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;
   // Not shown once the creator's verification is revoked (admins keep one too).

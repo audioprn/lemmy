@@ -95,7 +95,7 @@ pub(crate) async fn resolve_person_identifier(
   context: &Data<LemmyContext>,
   local_user_view: &Option<LocalUserView>,
 ) -> LemmyResult<Option<PersonId>> {
-  Ok(if let Some(name) = username {
+  let id = if let Some(name) = username {
     Some(
       resolve_ap_identifier::<ApubPerson, Person>(name, context, local_user_view, true)
         .await?
@@ -103,7 +103,17 @@ pub(crate) async fn resolve_person_identifier(
     )
   } else {
     id
-  })
+  };
+  // audioprn: someone who blocked you doesn't exist for you (profile, their posts and comments).
+  if let Some(id) = id {
+    lemmy_audioprn::blocks::check_not_blocked_by(
+      &mut context.pool(),
+      local_user_view.as_ref(),
+      id,
+    )
+    .await?;
+  }
+  Ok(id)
 }
 
 pub(crate) async fn resolve_multi_community_identifier(

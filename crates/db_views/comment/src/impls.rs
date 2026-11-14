@@ -125,6 +125,8 @@ impl CommentView {
 
     let mut query = Self::joins(my_local_user.person_id(), local_instance_id)
       .filter(comment::id.eq(comment_id))
+      // audioprn: someone who blocked me doesn't exist for me.
+      .filter(lemmy_db_schema_file::schema::person_actions::blocked_by_at.is_null())
       .select(Self::as_select())
       .into_boxed();
 

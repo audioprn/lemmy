@@ -73,6 +73,7 @@ pub async fn list_creators(
        a.hide_follower_count
      FROM creator_application a JOIN person p ON p.id = a.person_id
      WHERE a.approved AND NOT p.deleted AND ($2::int IS NULL OR p.id = $2)
+       AND NOT audioprn_blocked($1, p.id)
        AND NOT EXISTS (SELECT 1 FROM instance_actions i WHERE i.person_id = p.id
          AND i.received_ban_at IS NOT NULL AND (i.ban_expires_at IS NULL OR i.ban_expires_at > now()))
      ORDER BY last_post_at DESC NULLS LAST, p.name",
@@ -111,9 +112,11 @@ pub async fn follow_creator(
   }
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;
-  sql_query(if data.follow {
+  // No following across a block.
+  let changed = sql_query(if data.follow {
     "INSERT INTO person_actions (person_id, target_id, followed_at, follow_pending)
-     VALUES ($1, $2, now(), false) ON CONFLICT (person_id, target_id)
+     SELECT $1, $2, now(), false WHERE NOT audioprn_blocked($1, $2)
+     ON CONFLICT (person_id, target_id)
      DO UPDATE SET followed_at = now(), follow_pending = false"
   } else {
     "UPDATE person_actions SET followed_at = NULL, follow_pending = NULL
@@ -124,7 +127,7 @@ pub async fn follow_creator(
   .execute(conn)
   .await?;
   Ok(Json(FollowCreatorResponse {
-    following: data.follow,
+    following: data.follow && changed > 0,
   }))
 }
 

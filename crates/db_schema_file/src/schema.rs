@@ -741,6 +741,7 @@ diesel::table! {
         voted_at -> Nullable<Timestamptz>,
         upvotes -> Nullable<Int4>,
         downvotes -> Nullable<Int4>,
+        blocked_by_at -> Nullable<Timestamptz>,
     }
 }
 
