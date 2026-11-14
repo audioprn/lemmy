@@ -7,7 +7,7 @@ use chrono::{DateTime, Datelike, Utc};
 use diesel::{
   QueryableByName,
   sql_query,
-  sql_types::{BigInt, Bool, Integer, Text, Timestamptz},
+  sql_types::{Array, BigInt, Bool, Integer, Text, Timestamptz},
 };
 use diesel_async::RunQueryDsl;
 use lemmy_api_utils::context::LemmyContext;
@@ -27,16 +27,20 @@ struct ImportState {
   today: i64,
 }
 
-/// Before importing: a valid Reddit id and date, not imported yet, and under the daily limit.
+/// Before importing: valid Reddit ids (the post's and its cross-posts') and date, not imported
+/// yet, and under the daily limit.
 pub async fn check_import(
   context: &LemmyContext,
   person_id: PersonId,
   reddit_id: &str,
+  also_reddit_ids: &[String],
   date: DateTime<Utc>,
 ) -> LemmyResult<()> {
-  if reddit_id.is_empty()
-    || reddit_id.len() > 12
-    || !reddit_id.chars().all(|c| c.is_ascii_alphanumeric())
+  let valid =
+    |id: &str| !id.is_empty() && id.len() <= 12 && id.chars().all(|c| c.is_ascii_alphanumeric());
+  if !valid(reddit_id)
+    || also_reddit_ids.len() > 20
+    || !also_reddit_ids.iter().all(|id| valid(id))
     // At least a day old, so imports never fill the top of the Content page.
     || date > Utc::now() - chrono::Duration::days(1)
     || date.year() < 2005
@@ -46,7 +50,7 @@ pub async fn check_import(
   let mut pool = context.pool();
   let state: ImportState = sql_query(
     "SELECT EXISTS (SELECT 1 FROM reddit_import WHERE person_id = $1 AND reddit_id = $2) AS done,
-       (SELECT count(*) FROM reddit_import WHERE person_id = $1
+       (SELECT count(DISTINCT post_id) FROM reddit_import WHERE person_id = $1
          AND imported_at > now() - interval '1 day') AS today",
   )
   .bind::<Integer, _>(person_id.0)
@@ -62,11 +66,12 @@ pub async fn check_import(
   }
 }
 
-/// After the post is created: give it its Reddit date and remember the Reddit id.
+/// After the post is created: give it its Reddit date and remember its Reddit ids.
 pub async fn finish_import(
   context: &LemmyContext,
   person_id: PersonId,
   reddit_id: &str,
+  also_reddit_ids: &[String],
   post_id: PostId,
   date: DateTime<Utc>,
 ) -> LemmyResult<()> {
@@ -92,6 +97,16 @@ pub async fn finish_import(
     .bind::<Integer, _>(post_id.0)
     .execute(conn)
     .await?;
+  // Cross-posts are the same post: not offered again, and fills linking them still count.
+  sql_query(
+    "INSERT INTO reddit_import (person_id, reddit_id, post_id)
+     SELECT $1, unnest($2::text[]), $3 ON CONFLICT DO NOTHING",
+  )
+  .bind::<Integer, _>(person_id.0)
+  .bind::<Array<Text>, _>(also_reddit_ids)
+  .bind::<Integer, _>(post_id.0)
+  .execute(conn)
+  .await?;
   Ok(())
 }
 

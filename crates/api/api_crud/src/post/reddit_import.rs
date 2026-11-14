@@ -17,6 +17,9 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 pub struct ImportRedditPost {
   pub reddit_id: String,
+  /// The same post's cross-posts in other subreddits.
+  #[serde(default)]
+  pub also_reddit_ids: Vec<String>,
   /// When it was posted on Reddit.
   pub date: DateTime<Utc>,
   pub credits: Vec<PostCredit>,
@@ -30,10 +33,25 @@ pub async fn import_reddit_post(
   local_user_view: LocalUserView,
 ) -> LemmyResult<Json<PostResponse>> {
   let me = local_user_view.person.id;
-  lemmy_audioprn::reddit::check_import(&context, me, &data.reddit_id, data.date).await?;
+  lemmy_audioprn::reddit::check_import(
+    &context,
+    me,
+    &data.reddit_id,
+    &data.also_reddit_ids,
+    data.date,
+  )
+  .await?;
   let res = create_post(Json(data.post), context.clone(), local_user_view.clone()).await?;
   let post_id = res.post_view.post.id;
-  lemmy_audioprn::reddit::finish_import(&context, me, &data.reddit_id, post_id, data.date).await?;
+  lemmy_audioprn::reddit::finish_import(
+    &context,
+    me,
+    &data.reddit_id,
+    &data.also_reddit_ids,
+    post_id,
+    data.date,
+  )
+  .await?;
   if !data.credits.is_empty() {
     set_post_credits(
       Json(SetPostCredits {
