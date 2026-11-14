@@ -41,7 +41,6 @@ use negotiate_content::get_lang_or_negotiate;
 use rss::{
   Category,
   Channel,
-  EnclosureBuilder,
   Guid,
   Item,
   extension::{ExtensionBuilder, ExtensionMap, dublincore::DublinCoreExtension},
@@ -777,7 +776,7 @@ fn create_post_items(
       permalink: true,
       value: post_url.to_string(),
     });
-    let mut description = lang.submitted_post_with_meta_info(
+    let description = lang.submitted_post_with_meta_info(
       p.creator.actor_url(settings)?,
       &p.community.name,
       community_url,
@@ -787,33 +786,7 @@ fn create_post_items(
       &post_url,
     );
 
-    // If its a url post, add it to the description
-    // and see if we can parse it as a media enclosure.
-    let enclosure_opt = p.post.url.map(|url| {
-      let mime_type = p
-        .post
-        .url_content_type
-        .unwrap_or_else(|| "application/octet-stream".to_string());
-
-      // If the url directly links to an image, wrap it in an <img> tag for display.
-      let link_html = if mime_type.starts_with("image/") {
-        format!("<br><a href=\"{url}\"><img src=\"{url}\"/></a>")
-      } else {
-        format!("<br><a href=\"{url}\">{url}</a>")
-      };
-      description.push_str(&link_html);
-
-      let mut enclosure_bld = EnclosureBuilder::default();
-      enclosure_bld.url(url.as_str().to_string());
-      enclosure_bld.mime_type(mime_type);
-      enclosure_bld.length("0".to_string());
-      enclosure_bld.build()
-    });
-
-    if let Some(body) = p.post.body {
-      let html = markdown_to_html(&body);
-      description.push_str(&html);
-    }
+    // audioprn: no post link or text in feeds; readers open the post to get the link.
 
     let mut extensions = ExtensionMap::new();
 
@@ -846,7 +819,7 @@ fn create_post_items(
       dublin_core_ext,
       link: Some(post_url.to_string()),
       extensions,
-      enclosure: enclosure_opt,
+      enclosure: None,
       categories: vec![category],
       ..Default::default()
     };
