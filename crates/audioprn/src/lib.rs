@@ -67,6 +67,7 @@ diesel::table! {
     hide_follower_count -> Bool,
     footer_blurb -> Text,
     footer_links -> Array<Text>,
+    support_text -> Text,
   }
 }
 

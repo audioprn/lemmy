@@ -206,14 +206,18 @@ pub async fn set_creator_settings(
 
 const MAX_FOOTER_BLURB: usize = 500;
 const MAX_FOOTER_LINKS: usize = 10;
+const MAX_SUPPORT_TEXT: usize = 500;
 
-/// A creator's optional footer, shown under each of their posts.
+/// A creator's optional footer, shown under each of their posts, and cash box (support links,
+/// markdown), shown inside their Content posts at the bottom.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreatorFooter {
   #[serde(default)]
   pub person_id: i32,
   pub blurb: String,
   pub links: Vec<String>,
+  #[serde(default)]
+  pub support: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -245,15 +249,21 @@ pub async fn get_creator_footers(
   let footers = a::creator_application
     .filter(a::person_id.eq_any(&ids))
     .filter(a::approved.eq(true))
-    .filter(a::footer_blurb.ne("").or(a::footer_links.ne(Vec::<String>::new())))
-    .select((a::person_id, a::footer_blurb, a::footer_links))
-    .load::<(i32, String, Vec<String>)>(conn)
+    .filter(
+      a::footer_blurb
+        .ne("")
+        .or(a::footer_links.ne(Vec::<String>::new()))
+        .or(a::support_text.ne("")),
+    )
+    .select((a::person_id, a::footer_blurb, a::footer_links, a::support_text))
+    .load::<(i32, String, Vec<String>, String)>(conn)
     .await?
     .into_iter()
-    .map(|(person_id, blurb, links)| CreatorFooter {
+    .map(|(person_id, blurb, links, support)| CreatorFooter {
       person_id,
       blurb,
       links,
+      support,
     })
     .collect();
   Ok(Json(CreatorFootersResponse { footers }))
@@ -269,13 +279,17 @@ pub async fn set_creator_footer(
   use diesel::{ExpressionMethods, QueryDsl};
   check_local_user_banned_or_deleted(&local_user_view)?;
   let blurb = data.blurb.trim().to_string();
+  let support = data.support.trim().to_string();
   let links: Vec<String> = data
     .links
     .iter()
     .filter(|l| !l.trim().is_empty())
     .map(|l| crate::clean_link(l))
     .collect::<LemmyResult<_>>()?;
-  if blurb.chars().count() > MAX_FOOTER_BLURB || links.len() > MAX_FOOTER_LINKS {
+  if blurb.chars().count() > MAX_FOOTER_BLURB
+    || links.len() > MAX_FOOTER_LINKS
+    || support.chars().count() > MAX_SUPPORT_TEXT
+  {
     return Err(LemmyErrorType::Unknown("invalid_creator_footer".into()).into());
   }
   let person_id = local_user_view.person.id.0;
@@ -286,7 +300,11 @@ pub async fn set_creator_footer(
       .filter(a::person_id.eq(person_id))
       .filter(a::approved.eq(true)),
   )
-  .set((a::footer_blurb.eq(&blurb), a::footer_links.eq(&links)))
+  .set((
+    a::footer_blurb.eq(&blurb),
+    a::footer_links.eq(&links),
+    a::support_text.eq(&support),
+  ))
   .execute(conn)
   .await?;
   if updated == 0 {
@@ -296,5 +314,6 @@ pub async fn set_creator_footer(
     person_id,
     blurb,
     links,
+    support,
   }))
 }
