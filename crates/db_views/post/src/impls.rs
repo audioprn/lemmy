@@ -503,13 +503,20 @@ impl PostQuery<'_> {
     }
     if !searches.is_empty() {
       let searches: Vec<&str> = searches.iter().map(String::as_str).collect();
-      let (cond, params) =
+      let (cond, params, lookups) =
         crate::audioprn::search_sql(&searches).map_err(LemmyErrorType::Unknown)?;
       query = query.filter(
         diesel::dsl::sql::<diesel::sql_types::Bool>(&format!("(SELECT {cond} FROM (SELECT "))
           .bind::<diesel::sql_types::Array<diesel::sql_types::Text>, _>(params)
           .sql(" AS p) s)"),
       );
+      for (sql, value) in lookups {
+        query = query.filter(
+          diesel::dsl::sql::<diesel::sql_types::Bool>(sql)
+            .bind::<diesel::sql_types::Text, _>(value)
+            .sql(")))"),
+        );
+      }
     }
 
     if !self.show_nsfw.unwrap_or(self.local_user.show_nsfw(site)) {

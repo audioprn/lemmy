@@ -127,9 +127,15 @@ pub fn content_filter_sql(filters: &str, my_person_id: Option<i32>) -> String {
 ///
 /// Unknown `name:value` words are searched as text. Several searches (the user's and their saved
 /// search) must all match. Errors are messages for the user.
-pub fn search_sql(searches: &[&str]) -> Result<(String, Vec<String>), String> {
+///
+/// Also returns lookups (SQL up to the value, the value) for `u:` / `w:` terms every result must
+/// match (searches without OR, NOT or brackets): added as their own conditions, they let the post
+/// indexes pick the few matching posts. The condition above is checked per post while reading
+/// newest first, which is fast for common words and tags but slow for rare creators/writers.
+pub fn search_sql(searches: &[&str]) -> Result<SearchSql, String> {
   let mut conds = vec![];
   let mut params = vec![];
+  let mut lookups = vec![];
   for q in searches {
     if q.chars().count() > 1000 {
       return Err("search_too_long".into());
@@ -139,6 +145,7 @@ pub fn search_sql(searches: &[&str]) -> Result<(String, Vec<String>), String> {
       i: 0,
       params,
       depth: 0,
+      lookups: vec![],
     };
     if parser.toks.len() > 60 {
       return Err("search_too_long".into());
@@ -149,10 +156,20 @@ pub fn search_sql(searches: &[&str]) -> Result<(String, Vec<String>), String> {
       parser.i += 1;
       conds.push(parser.or()?);
     }
+    let plain_and = !parser
+      .toks
+      .iter()
+      .any(|t| matches!(t, Tok::Or | Tok::Not | Tok::Open | Tok::Close));
+    if plain_and {
+      lookups.append(&mut parser.lookups);
+    }
     params = parser.params;
   }
-  Ok((conds.join(" AND "), params))
+  Ok((conds.join(" AND "), params, lookups))
 }
+
+/// The search condition, its parameters, and the lookups (see `search_sql`).
+pub type SearchSql = (String, Vec<String>, Vec<(&'static str, String)>);
 
 /// The user's saved search, when they use it (see the audioprn_search migration).
 pub async fn saved_search(
@@ -265,6 +282,7 @@ struct Parser {
   i: usize,
   params: Vec<String>,
   depth: usize,
+  lookups: Vec<(&'static str, String)>,
 }
 
 impl Parser {
@@ -375,15 +393,29 @@ impl Parser {
     let count = |what: &str| format!("(SELECT count(*) FROM {what})");
     Ok(match name {
       "title" => format!("post.name ILIKE audioprn_like({})", self.param(value)),
-      "u" | "user" => format!(
-        "post.creator_id IN (SELECT id FROM person WHERE lower(name) = lower({}))",
-        self.param(name_only(value))
-      ),
-      "w" | "writer" => format!(
-        "EXISTS (SELECT 1 FROM post_credit c WHERE c.post_id = post.id AND c.role = 'writer' AND \
-         lower(regexp_replace(c.name, '^u/', '', 'i')) = lower({}))",
-        self.param(name_only(value))
-      ),
+      "u" | "user" => {
+        self.lookups.push((
+          "post.creator_id = ANY (ARRAY(SELECT id FROM person WHERE lower(name) = lower(",
+          name_only(value),
+        ));
+        format!(
+          "post.creator_id IN (SELECT id FROM person WHERE lower(name) = lower({}))",
+          self.param(name_only(value))
+        )
+      }
+      "w" | "writer" => {
+        // By index (audioprn_writer_search migration).
+        self.lookups.push((
+          "post.id = ANY (ARRAY(SELECT post_id FROM post_credit WHERE role = 'writer' AND \
+           lower(regexp_replace(name, '^u/', '', 'i')) = lower(",
+          name_only(value),
+        ));
+        format!(
+          "EXISTS (SELECT 1 FROM post_credit c WHERE c.post_id = post.id AND c.role = 'writer' \
+           AND lower(regexp_replace(c.name, '^u/', '', 'i')) = lower({}))",
+          self.param(name_only(value))
+        )
+      }
       "c" | "community" | "cummunity" => {
         let p = self.param(value);
         format!(
@@ -513,22 +545,28 @@ mod tests {
 
   #[test]
   fn search_syntax() {
-    let (cond, params) = search_sql(&[r#"script offer -blood "slow burn" [F4M] w:u/Lurkydip"#]).unwrap();
+    let (cond, params, _) = search_sql(&[r#"script offer -blood "slow burn" [F4M] w:u/Lurkydip"#]).unwrap();
     assert_eq!(params, ["script", "offer", "blood", "slow burn", "F4M", "Lurkydip"]);
     assert!(cond.contains("NOT coalesce("));
-    let (cond, params) = search_sql(&["(fdom OR mdom) fills:0 length:10-20 t:a date:14d"]).unwrap();
+    let (cond, params, _) = search_sql(&["(fdom OR mdom) fills:0 length:10-20 t:a date:14d"]).unwrap();
     assert!(cond.contains(" OR "));
     assert_eq!(params[..2], ["fdom", "mdom"]);
     assert_eq!(params.len(), 2 + 1 + 2 + 2);
     // Unknown fields and URLs are searched as text.
-    let (_, params) = search_sql(&["https://soundgasm.net/u/x foo:bar"]).unwrap();
+    let (_, params, _) = search_sql(&["https://soundgasm.net/u/x foo:bar"]).unwrap();
     assert_eq!(params, ["https://soundgasm.net/u/x", "foo:bar"]);
     assert!(search_sql(&["t:video"]).is_err());
     assert!(search_sql(&["fills:many"]).is_err());
     assert!(search_sql(&["date:2020-2-10_2020-2-15"]).is_ok());
     assert_eq!(search_sql(&[""]).unwrap().0, "(TRUE)");
     // The user's text never reaches the SQL.
-    let (cond, _) = search_sql(&["'; DROP TABLE post; -- \" ) ("]).unwrap();
+    let (cond, _, _) = search_sql(&["'; DROP TABLE post; -- \" ) ("]).unwrap();
     assert!(!cond.contains("DROP"));
+    // Lookups only for u:/w: every result must match.
+    let (_, _, lookups) = search_sql(&["w:u/Lurkydip [F4M]", "u:someone"]).unwrap();
+    assert_eq!(lookups.len(), 2);
+    assert_eq!(lookups[0].1, "Lurkydip");
+    assert!(search_sql(&["w:a OR u:b"]).unwrap().2.is_empty());
+    assert!(search_sql(&["comfort -w:a"]).unwrap().2.is_empty());
   }
 }
