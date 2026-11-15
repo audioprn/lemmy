@@ -21,7 +21,7 @@ use lemmy_db_views_post::{
   PostView,
   api::{CreatePostLike, PostResponse},
 };
-use lemmy_utils::error::LemmyResult;
+use lemmy_utils::error::{LemmyResult, UntranslatedError};
 use std::ops::Deref;
 
 pub async fn like_post(
@@ -32,6 +32,12 @@ pub async fn like_post(
   let local_instance_id = local_user_view.person.instance_id;
   let post_id = data.post_id;
   let my_person_id = local_user_view.person.id;
+
+  // audioprn: posts get emoji reactions instead of votes, in every cummunity whatever its vote
+  // settings (comments keep up and down votes). Taking a vote back is still allowed.
+  if data.is_upvote.is_some() {
+    return Err(UntranslatedError::VoteNotAllowed.into());
+  }
 
   let orig_post = PostView::read(
     &mut context.pool(),
