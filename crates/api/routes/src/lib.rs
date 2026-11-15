@@ -416,6 +416,13 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
               .route("/list", get().to(list_invitations)),
           ),
       )
+      // audioprn: Reddit takedown requests, open to everyone, so rate limited like signups
+      .service(
+        resource("/audioprn/takedown_request")
+          .guard(guard::Post())
+          .wrap(rate_limit.register())
+          .route(post().to(lemmy_audioprn::optout::submit_takedown_request)),
+      )
       // audioprn: verified creators, post credits and reactions
       .service(
         scope("/audioprn")
@@ -543,6 +550,13 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
           .route("/award_type", put().to(lemmy_audioprn::awards::edit_award_type))
           .route("/award_settings", get().to(lemmy_audioprn::awards::get_award_settings))
           .route("/award_settings", put().to(lemmy_audioprn::awards::set_award_settings))
+          .route("/opt_outs", get().to(lemmy_audioprn::optout::list_opt_outs))
+          .route("/opt_out", post().to(lemmy_audioprn::optout::add_opt_out))
+          .route("/opt_out", delete().to(lemmy_audioprn::optout::delete_opt_out))
+          .route(
+            "/takedown_request",
+            delete().to(lemmy_audioprn::optout::dismiss_takedown_request),
+          )
           .route("/feed_prefs", get().to(lemmy_audioprn::feed::get_feed_prefs))
           .route("/feed_prefs", put().to(lemmy_audioprn::feed::set_feed_prefs))
           .route(

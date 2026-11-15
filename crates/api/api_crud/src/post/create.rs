@@ -68,6 +68,13 @@ pub async fn create_post(
     &local_user_view,
   )
   .await?;
+  // audioprn: no mentions of Reddit users who opted out.
+  lemmy_audioprn::optout::check_opt_out(
+    &mut context.pool(),
+    &[Some(&data.name), data.body.as_deref(), data.url.as_deref()],
+    &[],
+  )
+  .await?;
   let local_site = SiteView::read_local(&mut context.pool()).await?.local_site;
 
   let slur_regex = slur_regex(&context).await?;

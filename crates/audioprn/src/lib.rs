@@ -14,6 +14,7 @@ pub mod drafts;
 pub mod masterlist;
 pub mod feed;
 pub mod news;
+pub mod optout;
 pub mod poll;
 pub mod post;
 pub mod reaction;
@@ -97,6 +98,8 @@ pub struct CreatorApplicationView {
   pub person_name: String,
   pub person_display_name: Option<String>,
   pub email_verified: bool,
+  /// An opted-out Reddit name matching the username or mentioned in a link.
+  pub opted_out: Option<String>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -292,6 +295,7 @@ pub async fn list_creator_applications(
   local_user_view: LocalUserView,
 ) -> LemmyResult<Json<ListCreatorApplicationsResponse>> {
   is_admin(&local_user_view)?;
+  let opted_out_names = optout::opt_out_names(&mut context.pool()).await?;
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;
 
@@ -328,11 +332,23 @@ pub async fn list_creator_applications(
     .map(|creator_application| {
       let id = creator_application.person_id.0;
       let (person_name, person_display_name) = names.get(&id).cloned().unwrap_or_default();
+      let opted_out = opted_out_names
+        .iter()
+        .find(|n| {
+          person_name.eq_ignore_ascii_case(n)
+            || creator_application
+              .content_links
+              .iter()
+              .chain(&creator_application.social_links)
+              .any(|l| optout::mentions(l, n))
+        })
+        .cloned();
       CreatorApplicationView {
         creator_application,
         person_name,
         person_display_name,
         email_verified: verified.get(&id).copied().unwrap_or(false),
+        opted_out,
       }
     })
     .collect();

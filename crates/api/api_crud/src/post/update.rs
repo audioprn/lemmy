@@ -122,6 +122,17 @@ pub async fn edit_post(
     )
     .await?;
   }
+  // audioprn: no mentions of Reddit users who opted out.
+  lemmy_audioprn::optout::check_opt_out(
+    &mut context.pool(),
+    &[
+      data.name.as_deref(),
+      data.body.as_deref(),
+      data.url.as_deref(),
+    ],
+    &[],
+  )
+  .await?;
   // audioprn: a gender tag first and at most 10 tags in the title.
   if let Some(name) = &data.name {
     lemmy_audioprn::post::check_title_tags(

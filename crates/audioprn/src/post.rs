@@ -175,6 +175,8 @@ pub async fn set_post_credits(
 ) -> LemmyResult<Json<PostCreditsResponse>> {
   lemmy_api_utils::utils::check_local_user_banned_or_deleted(&local_user_view)?;
   let credits = validate_credits(data.credits)?;
+  let names: Vec<&str> = credits.iter().map(|c| c.name.as_str()).collect();
+  crate::optout::check_opt_out(&mut context.pool(), &[], &names).await?;
   let post_id = data.post_id;
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;

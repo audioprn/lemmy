@@ -41,6 +41,9 @@ pub async fn import_reddit_post(
     data.date,
   )
   .await?;
+  // Credits are added after the post is created: check them for opted-out names first.
+  let credit_names: Vec<&str> = data.credits.iter().map(|c| c.name.as_str()).collect();
+  lemmy_audioprn::optout::check_opt_out(&mut context.pool(), &[], &credit_names).await?;
   let res = create_post(Json(data.post), context.clone(), local_user_view.clone()).await?;
   let post_id = res.post_view.post.id;
   lemmy_audioprn::reddit::finish_import(
