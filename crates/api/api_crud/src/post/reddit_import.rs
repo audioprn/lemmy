@@ -9,6 +9,8 @@ use actix_web::web::Json;
 use chrono::{DateTime, Utc};
 use lemmy_api_utils::context::LemmyContext;
 use lemmy_audioprn::post::{PostCredit, SetPostCredits, set_post_credits};
+use lemmy_db_schema::source::post::{Post, PostUpdateForm};
+use lemmy_diesel_utils::traits::Crud;
 use lemmy_db_views_local_user::LocalUserView;
 use lemmy_db_views_post::api::{CreatePost, PostResponse};
 use lemmy_utils::error::LemmyResult;
@@ -44,7 +46,8 @@ pub async fn import_reddit_post(
   // Credits are added after the post is created: check them for opted-out names first.
   let credit_names: Vec<&str> = data.credits.iter().map(|c| c.name.as_str()).collect();
   lemmy_audioprn::optout::check_opt_out(&mut context.pool(), &[], &credit_names).await?;
-  let res = create_post(Json(data.post), context.clone(), local_user_view.clone()).await?;
+  let multi_voice = lemmy_audioprn::post::is_multi_voice(&data.post.name, data.post.body.as_deref());
+  let mut res = create_post(Json(data.post), context.clone(), local_user_view.clone()).await?;
   let post_id = res.post_view.post.id;
   lemmy_audioprn::reddit::finish_import(
     &context,
@@ -62,10 +65,23 @@ pub async fn import_reddit_post(
         credits: data.credits,
         off_content: None,
       }),
-      context,
+      context.clone(),
       local_user_view,
     )
     .await?;
+  }
+  // More than one voice: imported hidden, for the creator to unhide once everyone consented.
+  if multi_voice {
+    Post::update(
+      &mut context.pool(),
+      post_id,
+      &PostUpdateForm {
+        deleted: Some(true),
+        ..Default::default()
+      },
+    )
+    .await?;
+    res.post_view.post.deleted = true;
   }
   Ok(res)
 }

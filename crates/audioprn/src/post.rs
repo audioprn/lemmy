@@ -45,6 +45,35 @@ static GENDER_TAG: LazyLock<Regex> = LazyLock::new(|| {
 /// Tags other than gender tags.
 const MAX_TITLE_TAGS: usize = 7;
 
+/// One voice in a gender tag part: TF, TM and NB are one voice each, like F, M and A.
+static VOICE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"(?i)TF|TM|NB|F|M|A").expect("compile regex"));
+
+static COLLAB: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"(?i)\bcollab(oration)?s?\b").expect("compile regex"));
+
+/// More than one voice: a gender tag with two or more voices ([FM4M], [FF4A], and [M4F4M], whose
+/// parts before the last are all voices), or "collab" / "collaboration" in the title or text.
+/// Reddit imports like this come in hidden, for the creator to unhide once everyone consented.
+pub fn is_multi_voice(title: &str, body: Option<&str>) -> bool {
+  let voices = |tag: &str| {
+    let parts: Vec<&str> = tag
+      .trim_matches(['[', ']'])
+      .split('4')
+      .collect();
+    parts[..parts.len() - 1]
+      .iter()
+      .map(|p| VOICE.find_iter(p).count())
+      .sum::<usize>()
+  };
+  TAG
+    .find_iter(title)
+    .filter(|t| GENDER_TAG.is_match(t.as_str()))
+    .any(|t| voices(t.as_str()) > 1)
+    || COLLAB.is_match(title)
+    || body.is_some_and(|b| COLLAB.is_match(b))
+}
+
 /// Content and community post titles start with a gender tag like [F4M] and have at most 7
 /// other tags. Creator page posts and admins' posts are exempt.
 pub async fn check_title_tags(
@@ -455,5 +484,16 @@ mod tests {
     assert!(validate_credits(vec![c("director", "x")]).is_err());
     assert!(validate_credits(vec![c("writer", &"x".repeat(101))]).is_err());
     assert!(validate_credits(vec![c("writer", "x"); 31]).is_err());
+  }
+
+  #[test]
+  fn test_is_multi_voice() {
+    for multi in ["[FM4M] Hi", "[FF4A] x", "[M4F4M] x", "[F4M] [TFM4A] x", "[F4M] [Collab] x"] {
+      assert!(is_multi_voice(multi, None), "{multi}");
+    }
+    assert!(is_multi_voice("[F4M] x", Some("A collaboration with u/bo")));
+    for single in ["[F4M] x", "[TF4M] x", "[NB4A] x", "[A4M] x", "[F4M] [M4F] versions", "[F4M] collabo"] {
+      assert!(!is_multi_voice(single, None), "{single}");
+    }
   }
 }
