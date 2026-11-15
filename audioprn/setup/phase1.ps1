@@ -135,4 +135,29 @@ foreach ($old in @($community.tags | Where-Object { -not $_.deleted -and $tags.n
 }
 }
 
+# --- Other cummunities (the owner's wording) --------------------------------
+# Only created when missing, so their moderators' later edits (and their own flairs) are kept.
+# The summary (cummunity list, max 150 characters) is the description's first sentence when it's longer.
+$others = @(
+  @{ name = "dark"; title = "dark"; summary = "Taboo content and dark fantasies."; sidebar = "Taboo content and dark fantasies. Posts tagged [Extreme] along with some other very taboo tags [Racial Slurs] [Gender Slurs] [Orientation Slurs] will be hidden from the main page by default." },
+  @{ name = "sapphic"; title = "sapphic"; summary = "By and for women, genderqueer, nonbinary and agender."; sidebar = "By and for women, genderqueer, nonbinary and agender. Post will show only in sapphic, not main page if 'No comments from men are welcome on this post' is ticked." },
+  @{ name = "gay"; title = "gay"; sidebar = "For those aroused by gay male sounds." },
+  @{ name = "cozy"; title = "cozy"; sidebar = "Still for adults but can be SFW. Tag any [SFW] content as it will be hidden from main page." },
+  @{ name = "multivoice"; title = "multivoice"; sidebar = "Audios with multiple speakers. From classic threesomes to radio plays." },
+  @{ name = "cozy_writing"; title = "cozy writing"; sidebar = "Vanilla, SFW, poetry and more - only for written works. Tag any [SFW] content as it will be hidden from main page." },
+  @{ name = "smut_scribes"; title = "smut scribes"; sidebar = "Where writers congregate to discuss and share their work." },
+  @{ name = "filth_factory"; title = "filth factory"; sidebar = "Discuss every aspect of content creation here. Podcasts and AMAs welcome!" },
+  @{ name = "audioprn_admin"; title = "audioprn admin"; sidebar = "For audioprn updates and site issues. Report any bugs and request new features here!" }
+)
+foreach ($c in $others) {
+  try { Invoke-Api GET "/community" @{ name = $c.name } | Out-Null; Write-Host "Community '$($c.name)' already exists"; continue } catch {}
+  Invoke-Api POST "/community" @{
+    name = $c.name; title = $c.title; sidebar = $c.sidebar
+    summary = $(if ($c.summary) { $c.summary } else { $c.sidebar })
+    nsfw = $true; posting_restricted_to_mods = $false; post_upvotes = "disable"; post_downvotes = "disable"
+    discussion_languages = @(0, 37); visibility = "public"
+  } | Out-Null
+  Write-Host "Created community '$($c.name)'"
+}
+
 Write-Host "`nPhase 1 settings done. Open $BaseUrl to check them."
