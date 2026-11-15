@@ -64,6 +64,7 @@ pub async fn import_reddit_post(
         post_id,
         credits: data.credits,
         off_content: None,
+        no_men: None,
       }),
       context.clone(),
       local_user_view,

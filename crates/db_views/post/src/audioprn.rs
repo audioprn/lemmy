@@ -1,6 +1,14 @@
 //! audioprn: content filters for the post list. Tags are read from posts into `post_filter_tags`
 //! and `taboo_tag` by a database trigger (see the audioprn_post_filter_tags migration).
 
+/// Tags (upper case, as in `post_filter_tags`) kept off the Content page: the dark cummunity's.
+const DARK_TAGS: [&str; 4] = [
+  "'EXTREME'",
+  "'RACIAL SLURS'",
+  "'GENDER SLURS'",
+  "'ORIENTATION SLURS'",
+];
+
 /// Builds a SQL condition from comma-separated filter names. Only fixed SQL is used, never the
 /// input text, so this is safe to pass to `sql()`. Unknown names are ignored.
 ///
@@ -11,7 +19,8 @@
 /// - `scripts`, `audios`: only posts with a script / audio flair.
 /// - `followed`: only posts by creators the user follows (ignored for guests).
 /// - `content_page`: the Content page: no posts kept off it, no creators' page posts, and no
-///   posts tagged [SFW] unless `sfw` is on (the Content page is NSFW only by default).
+///   posts tagged [SFW] unless `sfw` is on (the Content page is NSFW only by default), and no
+///   posts with `DARK_TAGS` unless `extreme` is on (the website only sends it with a search).
 /// - `my_recent`, `my_feed`: the two parts of the user's My audioprn feed.
 /// - `saved`: only the user's saved posts.
 /// - `favourites`: only the user's favourite posts (♥).
@@ -63,8 +72,19 @@ pub fn content_filter_sql(filters: &str, my_person_id: Option<i32>) -> String {
        (SELECT 1 FROM community c WHERE c.id = post.community_id AND c.name = 'creators')"
         .into(),
     );
+    // Dark cummunity tags never show on Content, except in searches with `extreme` ticked.
+    let mut hidden = vec![];
     if !has("sfw") {
-      conds.push(format!("NOT {}", tags("'SFW' = ANY (t.tags)")));
+      hidden.push("'SFW'");
+    }
+    if !has("extreme") {
+      hidden.extend(DARK_TAGS);
+    }
+    if !hidden.is_empty() {
+      conds.push(format!(
+        "NOT {}",
+        tags(&format!("t.tags && ARRAY[{}]", hidden.join(", ")))
+      ));
     }
   }
   // My audioprn (see the audioprn_my_feed migration): `my_recent` = followed creators' posts from

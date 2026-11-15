@@ -174,6 +174,8 @@ fn validate_credits(credits: Vec<PostCredit>) -> LemmyResult<Vec<PostCredit>> {
 diesel::table! {
   post_off_content (post_id) {
     post_id -> Int4,
+    /// Sapphic: "No comments from men are welcome on this post" (shown above its comments).
+    no_men -> Bool,
   }
 }
 
@@ -181,8 +183,10 @@ diesel::table! {
 pub struct SetPostCredits {
   pub post_id: PostId,
   pub credits: Vec<PostCredit>,
-  /// Keep the post off the Content page. Unchanged when left out.
+  /// Keep the post off the Content page. Unchanged when both this and `no_men` are left out.
   pub off_content: Option<bool>,
+  /// No comments from men are welcome (also keeps it off the Content page).
+  pub no_men: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -190,6 +194,8 @@ pub struct PostCreditsResponse {
   pub credits: Vec<PostCreditView>,
   /// Which of the posts are kept off the Content page.
   pub off_content: Vec<i32>,
+  /// Which of the posts welcome no comments from men.
+  pub no_men: Vec<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -244,13 +250,17 @@ pub async fn set_post_credits(
           .execute(conn)
           .await?;
       }
-      if let Some(off) = data.off_content {
+      if data.off_content.is_some() || data.no_men.is_some() {
         diesel::delete(post_off_content::table.find(post_id.0))
           .execute(conn)
           .await?;
-        if off {
+        let no_men = data.no_men == Some(true);
+        if no_men || data.off_content == Some(true) {
           insert_into(post_off_content::table)
-            .values(post_off_content::post_id.eq(post_id.0))
+            .values((
+              post_off_content::post_id.eq(post_id.0),
+              post_off_content::no_men.eq(no_men),
+            ))
             .execute(conn)
             .await?;
         }
@@ -259,8 +269,10 @@ pub async fn set_post_credits(
     })
     .await?;
 
+  let (off_content, no_men) = off_content_ids(conn, &[post_id.0]).await?;
   Ok(Json(PostCreditsResponse {
-    off_content: off_content_ids(conn, &[post_id.0]).await?,
+    off_content,
+    no_men,
     credits: credits
       .into_iter()
       .map(|c| PostCreditView {
@@ -304,23 +316,26 @@ pub async fn get_post_credits(
       name,
     })
     .collect();
+  let (off_content, no_men) = off_content_ids(conn, &ids).await?;
   Ok(Json(PostCreditsResponse {
     credits,
-    off_content: off_content_ids(conn, &ids).await?,
+    off_content,
+    no_men,
   }))
 }
 
+/// Which of the posts are kept off the Content page, and which of those welcome no men.
 async fn off_content_ids(
   conn: &mut diesel_async::AsyncPgConnection,
   ids: &[i32],
-) -> LemmyResult<Vec<i32>> {
-  Ok(
-    post_off_content::table
-      .filter(post_off_content::post_id.eq_any(ids))
-      .select(post_off_content::post_id)
-      .load(conn)
-      .await?,
-  )
+) -> LemmyResult<(Vec<i32>, Vec<i32>)> {
+  let rows: Vec<(i32, bool)> = post_off_content::table
+    .filter(post_off_content::post_id.eq_any(ids))
+    .select((post_off_content::post_id, post_off_content::no_men))
+    .load(conn)
+    .await?;
+  let no_men = rows.iter().filter(|r| r.1).map(|r| r.0).collect();
+  Ok((rows.into_iter().map(|r| r.0).collect(), no_men))
 }
 
 #[derive(Debug, Serialize, diesel::QueryableByName)]
