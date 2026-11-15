@@ -70,8 +70,10 @@ pub async fn import_reddit_post(
     )
     .await?;
   }
-  // More than one voice: imported hidden, for the creator to unhide once everyone consented.
-  if multi_voice {
+  // An audio with more than one voice: imported hidden, for the creator to unhide once everyone
+  // consented. Scripts (Script Offer flair) are only text, so they're fine.
+  let script = res.post_view.tags.0.iter().any(|t| t.name == "script_offer");
+  if multi_voice && !script {
     Post::update(
       &mut context.pool(),
       post_id,

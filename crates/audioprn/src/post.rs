@@ -57,7 +57,8 @@ static COLLAB: LazyLock<Regex> = LazyLock::new(|| {
 /// More than one voice: a gender tag with two or more voices ([FM4M], [FF4A], and [M4F4M], whose
 /// parts before the last are all voices), or "collab" / "collaboration" in the title (not
 /// "self-collab"). Post texts are left out: they mostly mention other collabs or the writer.
-/// Reddit imports like this come in hidden, for the creator to unhide once everyone consented.
+/// Reddit imports of audios like this come in hidden (scripts are fine), for the creator to unhide
+/// once everyone consented.
 pub fn is_multi_voice(title: &str) -> bool {
   let voices = |tag: &str| {
     let parts: Vec<&str> = tag
