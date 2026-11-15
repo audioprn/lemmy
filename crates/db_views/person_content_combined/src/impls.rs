@@ -181,6 +181,17 @@ impl PersonContentCombinedQuery {
     // Hide the hidden content
     query = query.filter(post_actions::hidden_at.is_null());
 
+    // audioprn: posts their creator hid (deleted), and comments on them, aren't on profiles (the
+    // creator finds them in My audioprn's Hidden posts); removed ones only show to the post's
+    // creator. Admins see everything.
+    if !user.is_some_and(|u| u.local_user.admin) {
+      query = query.filter(post::deleted.eq(false)).filter(
+        post::removed
+          .eq(false)
+          .or(post::creator_id.nullable().eq(my_person_id)),
+      );
+    }
+
     // Only the creator can see their own unpublished scheduled posts.
     query = query.filter(
       post::scheduled_publish_time_at

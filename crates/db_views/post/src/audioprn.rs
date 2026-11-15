@@ -92,6 +92,13 @@ pub fn content_filter_sql(filters: &str, my_person_id: Option<i32>) -> String {
       None => "FALSE".into(),
     });
   }
+  // The user's own hidden (deleted) posts: My audioprn's Hidden posts.
+  if has("hidden") {
+    conds.push(match my_person_id {
+      Some(id) => format!("post.deleted AND post.creator_id = {id}"),
+      None => "FALSE".into(),
+    });
+  }
   if has("favourites") {
     conds.push(match my_person_id {
       Some(id) => {

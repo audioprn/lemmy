@@ -222,13 +222,11 @@ impl PostView {
             .eq(false)
             .or(post::creator_id.nullable().eq(my_person_id)),
         )
-        // Posts deleted by the creator are still visible if they have any comments. If there
-        // are no comments only the creator can see it.
+        // audioprn: posts deleted (hidden) by the creator only show to them, even with comments.
         .filter(
           post::deleted
             .eq(false)
-            .or(post::creator_id.nullable().eq(my_person_id))
-            .or(post::comments.gt(0)),
+            .or(post::creator_id.nullable().eq(my_person_id)),
         )
         // private communities can only by browsed by accepted followers
         .filter(filter_private_or_followed());
@@ -420,8 +418,18 @@ impl PostQuery<'_> {
     query = query.filter(community::deleted.eq(false));
 
     // only creator can see deleted posts and unpublished scheduled posts
+    // audioprn: deleted = hidden by its creator, shown only in their Hidden posts list (content
+    // filter `hidden`), not in their feeds.
+    let hidden_list = self
+      .content_filters
+      .as_deref()
+      .is_some_and(|f| f.split(',').any(|f| f.trim() == "hidden"));
     if let Some(person_id) = my_person_id {
-      query = query.filter(post::deleted.eq(false).or(post::creator_id.eq(person_id)));
+      query = if hidden_list {
+        query.filter(post::deleted.eq(false).or(post::creator_id.eq(person_id)))
+      } else {
+        query.filter(post::deleted.eq(false))
+      };
       query = query.filter(
         post::scheduled_publish_time_at
           .is_null()
