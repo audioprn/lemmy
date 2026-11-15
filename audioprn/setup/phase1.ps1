@@ -49,7 +49,7 @@ Write-Host "Logged in as $AdminUser"
 # --- Site settings ----------------------------------------------------------
 $site = @{
   name                          = $SiteName
-  summary                       = "An 18+ cummunity for sharing and discussing erotic audio and fiction."
+  summary                       = "An 18+ community for sharing and discussing erotic audio and fiction."
   sidebar                       = Read-Text "sidebar.md"
   legal_information             = Read-Text "legal.md"
   # Shown as a popup to every visitor before they can use the site (the 18+ confirmation).
