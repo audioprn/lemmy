@@ -35,14 +35,8 @@ pub struct PopularTags {
 /// GET /popular_tags: the 30 most used title tags on the Content page (lengths left out).
 pub async fn get_popular_tags(context: Data<LemmyContext>) -> LemmyResult<Json<PopularTags>> {
   let mut pool = context.pool();
-  let tags = sql_query(
-    "SELECT rtrim(tag, '\\') AS tag, count(DISTINCT p.id) AS count
-     FROM post_filter_tags t JOIN post p ON p.id = t.post_id, unnest(t.tags) tag
-     WHERE NOT p.deleted AND NOT p.removed AND audioprn_minutes(tag) IS NULL
-       AND NOT EXISTS (SELECT 1 FROM post_off_content o WHERE o.post_id = p.id)
-       AND p.community_id NOT IN (SELECT id FROM community WHERE name = 'creators')
-     GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 30",
-  )
+  // Counted hourly by the scheduler (see the audioprn_faster_at_scale migration).
+  let tags = sql_query("SELECT tag, count FROM audioprn_popular_tags ORDER BY count DESC, tag")
   .load(&mut get_conn(&mut pool).await?)
   .await?;
   Ok(Json(PopularTags { tags }))

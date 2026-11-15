@@ -113,6 +113,11 @@ pub async fn setup(context: Data<LemmyContext>) -> LemmyResult<()> {
         .await
         .inspect_err(|e| warn!("Failed to delete expired invitations: {e}"))
         .ok();
+      // audioprn: popular tags (Content search panel) are counted here, not on every page view.
+      refresh_popular_tags(&mut context.pool())
+        .await
+        .inspect_err(|e| warn!("Failed to refresh popular tags: {e}"))
+        .ok();
       plugin_hook_after("scheduled_task_1_hour", &());
     }
   });
@@ -191,6 +196,14 @@ pub async fn setup(context: Data<LemmyContext>) -> LemmyResult<()> {
 
 /// Update the hot_rank columns for the aggregates tables
 /// Runs in batches until all necessary rows are updated once
+/// audioprn: recounts the popular tags (see the audioprn_faster_at_scale migration).
+async fn refresh_popular_tags(pool: &mut DbPool<'_>) -> LemmyResult<()> {
+  sql_query("REFRESH MATERIALIZED VIEW CONCURRENTLY audioprn_popular_tags")
+    .execute(&mut get_conn(pool).await?)
+    .await?;
+  Ok(())
+}
+
 async fn update_hot_ranks(pool: &mut DbPool<'_>) -> LemmyResult<()> {
   info!("Updating hot ranks for all history...");
 

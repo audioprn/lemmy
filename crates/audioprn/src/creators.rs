@@ -45,14 +45,23 @@ pub struct Creator {
 pub struct ListCreators {
   /// Only this creator (empty list if they aren't a verified creator).
   pub person_id: Option<i32>,
+  /// `recent` (default), `alpha` or `random`.
+  pub sort: Option<String>,
+  /// For `random`: the same seed gives the same order, so later pages follow on.
+  pub seed: Option<String>,
+  /// Pages of 50, from 1.
+  pub page: Option<i64>,
 }
+
+const CREATORS_PAGE: i64 = 50;
 
 #[derive(Debug, Serialize)]
 pub struct ListCreatorsResponse {
   pub creators: Vec<Creator>,
 }
 
-/// GET /creators: verified creators who aren't deleted or banned, most recently posted first.
+/// GET /creators: verified creators who aren't deleted or banned, a page of 50 at a time (sorted
+/// here: there can be thousands).
 pub async fn list_creators(
   Query(data): Query<ListCreators>,
   context: Data<LemmyContext>,
@@ -60,7 +69,14 @@ pub async fn list_creators(
 ) -> LemmyResult<Json<ListCreatorsResponse>> {
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;
-  let creators = sql_query(
+  // Only fixed text goes into the query; the seed is bound.
+  let order = match data.sort.as_deref() {
+    Some("alpha") => "lower(coalesce(p.display_name, p.name)), p.id",
+    Some("random") => "md5(p.id::text || $3), p.id",
+    _ => "last_post_at DESC NULLS LAST, p.name",
+  };
+  let offset = (data.page.unwrap_or(1).max(1) - 1) * CREATORS_PAGE;
+  let creators = sql_query(format!(
     "SELECT p.id, p.name, p.display_name, p.avatar,
        (SELECT max(published_at) FROM post
          WHERE creator_id = p.id AND NOT deleted AND NOT removed) AS last_post_at,
@@ -73,13 +89,16 @@ pub async fn list_creators(
        a.hide_follower_count
      FROM creator_application a JOIN person p ON p.id = a.person_id
      WHERE a.approved AND NOT p.deleted AND ($2::int IS NULL OR p.id = $2)
-       AND NOT audioprn_blocked($1, p.id)
+       AND NOT EXISTS (SELECT 1 FROM person_actions b WHERE b.person_id = $1 AND b.target_id = p.id
+         AND (b.blocked_at IS NOT NULL OR b.blocked_by_at IS NOT NULL)) -- audioprn_blocked(), as a join
        AND NOT EXISTS (SELECT 1 FROM instance_actions i WHERE i.person_id = p.id
          AND i.received_ban_at IS NOT NULL AND (i.ban_expires_at IS NULL OR i.ban_expires_at > now()))
-     ORDER BY last_post_at DESC NULLS LAST, p.name",
-  )
+     ORDER BY {order} LIMIT {CREATORS_PAGE} OFFSET $4",
+  ))
   .bind::<Nullable<Integer>, _>(local_user_view.map(|l| l.person.id.0))
   .bind::<Nullable<Integer>, _>(data.person_id)
+  .bind::<Text, _>(data.seed.unwrap_or_default())
+  .bind::<BigInt, _>(offset)
   .load(conn)
   .await?;
   Ok(Json(ListCreatorsResponse { creators }))

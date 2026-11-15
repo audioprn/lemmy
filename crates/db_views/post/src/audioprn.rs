@@ -68,38 +68,43 @@ pub fn content_filter_sql(filters: &str, my_person_id: Option<i32>) -> String {
     }
   }
   // My audioprn (see the audioprn_my_feed migration): `my_recent` = followed creators' posts from
-  // the past 7 days, `my_feed` = everything else in the user's feed.
+  // the past 7 days, `my_feed` = everything else in the user's feed. The date condition lets the
+  // date index stop the recent list at 7 days.
   for (name, part) in [("my_recent", "recent"), ("my_feed", "feed")] {
     if has(name) {
       conds.push(match my_person_id {
-        Some(id) => format!("audioprn_my_feed(post.id, {id}) = '{part}'"),
+        Some(id) => format!("audioprn_in_my_feed(post.id, {id}, '{part}')"),
         None => "FALSE".into(),
       });
     }
   }
+  if has("my_recent") {
+    conds.push("post.published_at > now() - interval '7 days'".into());
+  }
+  // The user's own lists are read first (`= ANY (ARRAY(…))`, run once): as a join, Postgres
+  // joined every post before picking the user's few (seconds with 245k posts).
   if has("saved") {
     conds.push(match my_person_id {
       Some(id) => format!(
-        "EXISTS (SELECT 1 FROM post_actions pa WHERE pa.post_id = post.id AND pa.person_id = \
-         {id} AND pa.saved_at IS NOT NULL)"
+        "post.id = ANY (ARRAY(SELECT post_id FROM post_actions WHERE person_id = {id} AND \
+         saved_at IS NOT NULL))"
       ),
       None => "FALSE".into(),
     });
   }
   if has("favourites") {
     conds.push(match my_person_id {
-      Some(id) => format!(
-        "EXISTS (SELECT 1 FROM post_favourite pf WHERE pf.post_id = post.id AND pf.person_id = \
-         {id})"
-      ),
+      Some(id) => {
+        format!("post.id = ANY (ARRAY(SELECT post_id FROM post_favourite WHERE person_id = {id}))")
+      }
       None => "FALSE".into(),
     });
   }
   // Ignored for guests (a filter remembered in the browser from before logging out).
   if let (true, Some(id)) = (has("followed"), my_person_id) {
     conds.push(format!(
-      "post.creator_id IN (SELECT target_id FROM person_actions WHERE person_id = {id} AND \
-       followed_at IS NOT NULL)"
+      "post.creator_id = ANY (ARRAY(SELECT target_id FROM person_actions WHERE person_id = {id} \
+       AND followed_at IS NOT NULL))"
     ));
   }
   conds.join(" AND ")
