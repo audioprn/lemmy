@@ -70,6 +70,7 @@ diesel::table! {
     footer_blurb -> Text,
     footer_links -> Array<Text>,
     support_text -> Text,
+    recommendations -> Bool,
   }
 }
 

@@ -39,6 +39,9 @@ pub struct Creator {
   pub followers: Option<i64>,
   #[diesel(sql_type = Bool)]
   pub hide_follower_count: bool,
+  /// Takes "Share with Creator" script recommendations (Settings → Recommendations).
+  #[diesel(sql_type = Bool)]
+  pub recommendations: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,7 +96,7 @@ pub async fn list_creators(
          (SELECT count(*) FROM person_actions f JOIN person fp ON fp.id = f.person_id
            WHERE f.target_id = p.id AND f.followed_at IS NOT NULL AND NOT fp.deleted)
        END AS followers,
-       a.hide_follower_count
+       a.hide_follower_count, a.recommendations
      FROM creator_application a JOIN person p ON p.id = a.person_id
      WHERE a.approved AND NOT p.deleted AND ($2::int IS NULL OR p.id = $2)
        AND ($5::text IS NULL OR p.name ILIKE $5 OR p.display_name ILIKE $5)
@@ -192,22 +195,35 @@ pub async fn my_followers(
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreatorSettings {
-  pub hide_follower_count: bool,
+  pub hide_follower_count: Option<bool>,
+  pub recommendations: Option<bool>,
 }
 
-/// PUT /creator_settings: a creator shows or hides their public follower count.
+/// PUT /creator_settings: a creator shows or hides their public follower count, or turns
+/// script recommendations on or off (only what's sent changes).
 pub async fn set_creator_settings(
   Json(data): Json<CreatorSettings>,
   context: Data<LemmyContext>,
   local_user_view: LocalUserView,
 ) -> LemmyResult<Json<CreatorSettings>> {
-  use crate::creator_application::dsl::{creator_application, hide_follower_count, person_id};
+  use crate::creator_application::dsl::{
+    creator_application,
+    hide_follower_count,
+    person_id,
+    recommendations,
+  };
   use diesel::{ExpressionMethods, QueryDsl};
   check_local_user_banned_or_deleted(&local_user_view)?;
+  if data.hide_follower_count.is_none() && data.recommendations.is_none() {
+    return Ok(Json(data));
+  }
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;
   diesel::update(creator_application.filter(person_id.eq(local_user_view.person.id.0)))
-    .set(hide_follower_count.eq(data.hide_follower_count))
+    .set((
+      data.hide_follower_count.map(|h| hide_follower_count.eq(h)),
+      data.recommendations.map(|r| recommendations.eq(r)),
+    ))
     .execute(conn)
     .await?;
   Ok(Json(data))
