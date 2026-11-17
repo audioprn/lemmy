@@ -475,6 +475,10 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
           .route("/news/main", put().to(lemmy_audioprn::news::set_news_in_main))
           .route("/post_script", get().to(lemmy_audioprn::script::get_post_script))
           .route("/post_script", put().to(lemmy_audioprn::script::set_post_script))
+          .route(
+            "/scriptbin_posts",
+            get().to(lemmy_audioprn::script::list_scriptbin_posts),
+          )
           .route("/script_watermark", post().to(lemmy_audioprn::script::check_watermark))
           .route("/creator_pin", get().to(lemmy_audioprn::creator_page::get_creator_pin))
           .route("/creator_pin", put().to(lemmy_audioprn::creator_page::set_creator_pin))

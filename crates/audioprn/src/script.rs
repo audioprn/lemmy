@@ -300,3 +300,50 @@ pub async fn set_post_script(
   )
   .await
 }
+
+#[derive(Debug, Serialize, QueryableByName)]
+pub struct ScriptbinPost {
+  #[diesel(sql_type = Integer)]
+  pub post_id: i32,
+  /// The script's address on scriptbin (scriptbin.works/u/name/<slug>).
+  #[diesel(sql_type = Text)]
+  pub slug: String,
+  /// The post already holds a script text.
+  #[diesel(sql_type = Bool)]
+  pub has_script: bool,
+  #[diesel(sql_type = Nullable<Text>)]
+  pub link: Option<String>,
+  #[diesel(sql_type = Nullable<Text>)]
+  pub fill_terms: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ScriptbinPostsResponse {
+  pub posts: Vec<ScriptbinPost>,
+}
+
+/// GET /scriptbin_posts: the logged-in creator's Script Offer posts that link a scriptbin script
+/// (their link, or else the first one in their text: other scripts may be mentioned too), so the
+/// scriptbin import can add each script's text to its post.
+pub async fn list_scriptbin_posts(
+  context: Data<LemmyContext>,
+  local_user_view: LocalUserView,
+) -> LemmyResult<Json<ScriptbinPostsResponse>> {
+  let mut pool = context.pool();
+  let posts = sql_query(
+    r"SELECT * FROM (SELECT p.id AS post_id,
+         coalesce(substring(p.url FROM $2), substring(p.body FROM $2)) AS slug,
+         coalesce(s.body, '') <> '' AS has_script, s.link, s.fill_terms
+       FROM post p LEFT JOIN post_script s ON s.post_id = p.id
+       WHERE p.creator_id = $1 AND NOT p.removed
+         AND EXISTS (SELECT 1 FROM post_community_tag pct
+           JOIN community_tag ct ON ct.id = pct.community_tag_id
+           WHERE pct.post_id = p.id AND ct.name = 'script_offer' AND NOT ct.deleted)) AS p
+     WHERE slug IS NOT NULL",
+  )
+  .bind::<Integer, _>(local_user_view.person.id.0)
+  .bind::<Text, _>(r"(?i)scriptbin\.works/u/[^/\s]+/([A-Za-z0-9_-]+)")
+  .load(&mut get_conn(&mut pool).await?)
+  .await?;
+  Ok(Json(ScriptbinPostsResponse { posts }))
+}
