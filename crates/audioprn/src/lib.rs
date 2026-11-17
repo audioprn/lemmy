@@ -14,6 +14,7 @@ pub mod drafts;
 pub mod masterlist;
 pub mod feed;
 pub mod news;
+pub mod online;
 pub mod optout;
 pub mod poll;
 pub mod post;

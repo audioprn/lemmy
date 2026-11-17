@@ -483,6 +483,7 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
           .route("/creator_page_pin", put().to(lemmy_audioprn::creator_page::set_page_pin))
           .route("/blocks", get().to(lemmy_audioprn::blocks::get_blocks))
           .route("/popular_tags", get().to(lemmy_audioprn::search::get_popular_tags))
+          .route("/online", get().to(lemmy_audioprn::online::get_online))
           .route("/search_prefs", get().to(lemmy_audioprn::search::get_search_prefs))
           .route("/search_prefs", put().to(lemmy_audioprn::search::set_search_prefs))
           .route("/script_fill", get().to(lemmy_audioprn::search::get_script_fill))
