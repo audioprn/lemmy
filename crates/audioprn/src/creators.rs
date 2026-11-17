@@ -51,6 +51,8 @@ pub struct ListCreators {
   pub seed: Option<String>,
   /// Pages of 50, from 1.
   pub page: Option<i64>,
+  /// Only creators whose username or display name contains this.
+  pub q: Option<String>,
 }
 
 const CREATORS_PAGE: i64 = 50;
@@ -76,6 +78,11 @@ pub async fn list_creators(
     _ => "last_post_at DESC NULLS LAST, p.name",
   };
   let offset = (data.page.unwrap_or(1).max(1) - 1) * CREATORS_PAGE;
+  // Typed % and _ are letters, not wildcards.
+  let q = data.q.as_deref().map(str::trim).filter(|q| !q.is_empty()).map(|q| {
+    let q = q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    format!("%{q}%")
+  });
   let creators = sql_query(format!(
     "SELECT p.id, p.name, p.display_name, p.avatar,
        (SELECT max(published_at) FROM post
@@ -89,6 +96,7 @@ pub async fn list_creators(
        a.hide_follower_count
      FROM creator_application a JOIN person p ON p.id = a.person_id
      WHERE a.approved AND NOT p.deleted AND ($2::int IS NULL OR p.id = $2)
+       AND ($5::text IS NULL OR p.name ILIKE $5 OR p.display_name ILIKE $5)
        AND NOT EXISTS (SELECT 1 FROM person_actions b WHERE b.person_id = $1 AND b.target_id = p.id
          AND (b.blocked_at IS NOT NULL OR b.blocked_by_at IS NOT NULL)) -- audioprn_blocked(), as a join
        AND NOT EXISTS (SELECT 1 FROM instance_actions i WHERE i.person_id = p.id
@@ -99,6 +107,7 @@ pub async fn list_creators(
   .bind::<Nullable<Integer>, _>(data.person_id)
   .bind::<Text, _>(data.seed.unwrap_or_default())
   .bind::<BigInt, _>(offset)
+  .bind::<Nullable<Text>, _>(q)
   .load(conn)
   .await?;
   Ok(Json(ListCreatorsResponse { creators }))
