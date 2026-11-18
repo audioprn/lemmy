@@ -423,9 +423,24 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
           .wrap(rate_limit.register())
           .route(post().to(lemmy_audioprn::optout::submit_takedown_request)),
       )
+      // audioprn: setting a new password with a recovery code (no email), rate limited like signups
+      .service(
+        resource("/audioprn/recover")
+          .guard(guard::Post())
+          .wrap(rate_limit.register())
+          .route(post().to(lemmy_audioprn::recovery::recover)),
+      )
       // audioprn: verified creators, post credits and reactions
       .service(
         scope("/audioprn")
+          .route(
+            "/recovery_code",
+            post().to(lemmy_audioprn::recovery::create_recovery_code),
+          )
+          .route(
+            "/admin_reset_password",
+            post().to(lemmy_audioprn::recovery::admin_reset_password),
+          )
           .route(
             "/creator_application",
             post().to(lemmy_audioprn::submit_creator_application),

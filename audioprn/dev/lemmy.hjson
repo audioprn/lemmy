@@ -1,7 +1,7 @@
 {
-  # Local development config. Same as docker/lemmy.hjson plus an email server,
-  # because Phase 1 requires email verification to register.
-  # Sent emails are caught by Mailpit: open http://localhost:8025 to read them.
+  # Local development config. Same as docker/lemmy.hjson plus an email server.
+  # The site no longer uses email (recovery codes instead, 2026-11-18); production has no
+  # email section. Anything sent locally is caught by Mailpit: http://localhost:8025.
 
   setup: {
     admin_username: "lemmy"

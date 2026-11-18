@@ -19,6 +19,7 @@ pub mod optout;
 pub mod poll;
 pub mod post;
 pub mod reaction;
+pub mod recovery;
 pub mod reddit;
 pub mod script;
 pub mod search;

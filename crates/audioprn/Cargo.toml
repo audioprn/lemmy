@@ -26,7 +26,10 @@ lemmy_routes = { workspace = true }
 lemmy_db_schema_file = { workspace = true, features = ["full"] }
 lemmy_diesel_utils = { workspace = true, features = ["full"] }
 lemmy_utils = { workspace = true, features = ["full"] }
+lemmy_db_schema = { workspace = true, features = ["full"] }
 activitypub_federation = { workspace = true }
+bcrypt = { workspace = true }
+rand = { workspace = true }
 actix-web = { workspace = true }
 chrono = { workspace = true }
 diesel = { workspace = true }

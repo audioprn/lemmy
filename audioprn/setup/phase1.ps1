@@ -54,14 +54,16 @@ $site = @{
   legal_information             = Read-Text "legal.md"
   # Shown as a popup to every visitor before they can use the site (the 18+ confirmation).
   content_warning               = Read-Text "content-warning.md"
-  # Accounts need a verified email address. Requires the email section in lemmy.hjson.
-  email_verification_required   = $true
+  # No email (user, 2026-11-18): signup asks for none; listeners keep a recovery code and admins
+  # reset creators' passwords (crates/audioprn/src/recovery.rs). No email section in lemmy.hjson.
+  email_verification_required   = $false
+  application_email_admins      = $false
   registration_mode             = "open"
   private_instance              = $PrivateInstance
   # Single closed community: no federation with other Lemmy servers.
   federation_enabled            = $false
   community_creation_admin_only = $true
-  reports_email_admins          = $true
+  reports_email_admins          = $false
   # Audio and scripts are linked, never hosted. No images except avatars (everyone) and banners
   # (verified creators, checked in crates/audioprn): uploads in posts, comments and messages are off.
   image_upload_disabled         = $true
