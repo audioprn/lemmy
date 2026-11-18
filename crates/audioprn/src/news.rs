@@ -2,7 +2,8 @@
 //! left column. Community news is posted by the community's mods on the community page; admins
 //! choose which community news also shows in the site news. Verified creators post their own news
 //! on their profile. My audioprn shows the site news plus news from the creators and communities
-//! the user follows. Up to 300 characters, where every link counts as 23 (links show shortened).
+//! the user follows. The Creators page shows every creator's news. Up to 300 characters, where
+//! every link counts as 23 (links show shortened).
 
 use activitypub_federation::config::Data;
 use actix_web::web::{Json, Query};
@@ -75,6 +76,8 @@ pub struct NewsFlashView {
   pub community_title: Option<String>,
   /// The creator's display name (or name), for creator flashes.
   pub creator_name: Option<String>,
+  /// Their username, to link to their page.
+  pub creator_username: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -93,10 +96,13 @@ pub struct ListNews {
   /// My audioprn: the site news plus news from followed creators and communities.
   #[serde(default)]
   pub my: bool,
+  /// The Creators page: every creator's news.
+  #[serde(default)]
+  pub creators: bool,
 }
 
-/// GET /news: the latest news flashes, newest first. Without community_id, person_id or my: the
-/// site news (admins' flashes and community flashes shown in the main feed).
+/// GET /news: the latest news flashes, newest first. Without community_id, person_id, my or
+/// creators: the site news (admins' flashes and community flashes shown in the main feed).
 pub async fn list_news(
   Query(data): Query<ListNews>,
   context: Data<LemmyContext>,
@@ -119,7 +125,7 @@ pub async fn list_news(
   let conn = &mut get_conn(&mut pool).await?;
   let query = news_flash::table
     .order_by(news_flash::published_at.desc())
-    .limit(SHOWN)
+    .limit(if data.creators { 2 * SHOWN } else { SHOWN })
     .into_boxed();
   let site = news_flash::person_id.is_null().and(
     news_flash::community_id
@@ -129,6 +135,15 @@ pub async fn list_news(
   let flashes: Vec<NewsFlash> = match (data.community_id, data.person_id, me) {
     (Some(id), _, _) => query.filter(news_flash::community_id.eq(id)),
     (_, Some(id), _) => query.filter(news_flash::person_id.eq(id)),
+    // Not from creators blocked either way (blocked_by_at mirrors their blocks).
+    _ if data.creators => query.filter(news_flash::person_id.is_not_null()).filter(
+      sql::<Bool>(
+        "news_flash.person_id NOT IN (SELECT target_id FROM person_actions
+           WHERE (blocked_at IS NOT NULL OR blocked_by_at IS NOT NULL) AND person_id = ",
+      )
+      .bind::<Integer, _>(me.unwrap_or(0))
+      .sql(")"),
+    ),
     (_, _, Some(me)) if data.my => query.filter(
       site.or(
         sql::<Bool>(
@@ -159,22 +174,26 @@ pub async fn list_news(
     .map(|(id, name, title)| (id, title.unwrap_or(name)))
     .collect();
   let ids: Vec<i32> = flashes.iter().filter_map(|f| f.person_id).collect();
-  let names: HashMap<i32, String> = person::table
+  let names: HashMap<i32, (String, Option<String>)> = person::table
     .filter(person::id.eq_any(ids))
     .select((person::id, person::name, person::display_name))
     .load::<(i32, String, Option<String>)>(conn)
     .await?
     .into_iter()
-    .map(|(id, name, display_name)| (id, display_name.unwrap_or(name)))
+    .map(|(id, name, display_name)| (id, (name, display_name)))
     .collect();
   let news = flashes
     .into_iter()
-    .map(|news_flash| NewsFlashView {
-      community_title: news_flash
-        .community_id
-        .and_then(|id| titles.get(&id).cloned()),
-      creator_name: news_flash.person_id.and_then(|id| names.get(&id).cloned()),
-      news_flash,
+    .map(|news_flash| {
+      let creator = news_flash.person_id.and_then(|id| names.get(&id));
+      NewsFlashView {
+        community_title: news_flash
+          .community_id
+          .and_then(|id| titles.get(&id).cloned()),
+        creator_name: creator.map(|(name, display)| display.clone().unwrap_or(name.clone())),
+        creator_username: creator.map(|(name, _)| name.clone()),
+        news_flash,
+      }
     })
     .collect();
   Ok(Json(NewsResponse { news, can_post }))
