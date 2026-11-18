@@ -235,6 +235,36 @@ pub struct SubmitCreatorApplication {
   pub content_links: Vec<String>,
   #[serde(default)]
   pub social_links: Vec<String>,
+  /// The creator username they want (user, 2026-11-18): the account is renamed when it differs.
+  #[serde(default)]
+  pub username: Option<String>,
+}
+
+/// Renames an account: its login, its /u/ address and credits naming it as u/old.
+async fn rename_person(pool: &mut DbPool<'_>, me: &LocalUserView, new: &str) -> LemmyResult<()> {
+  let old = &me.person.name;
+  if new == old {
+    return Ok(());
+  }
+  lemmy_utils::utils::validation::is_valid_actor_name(new)?;
+  if !new.eq_ignore_ascii_case(old) {
+    lemmy_db_schema::source::person::Person::check_username_taken(pool, new).await?;
+  }
+  let conn = &mut get_conn(pool).await?;
+  diesel::sql_query(
+    "UPDATE person SET name = $1, ap_id = regexp_replace(ap_id, '/u/[^/]+$', '/u/' || $1)
+     WHERE id = $2",
+  )
+  .bind::<diesel::sql_types::Text, _>(new)
+  .bind::<diesel::sql_types::Integer, _>(me.person.id.0)
+  .execute(conn)
+  .await?;
+  diesel::sql_query("UPDATE post_credit SET name = 'u/' || $1 WHERE lower(name) = lower('u/' || $2)")
+    .bind::<diesel::sql_types::Text, _>(new)
+    .bind::<diesel::sql_types::Text, _>(old)
+    .execute(conn)
+    .await?;
+  Ok(())
 }
 
 #[derive(Debug, Serialize)]
@@ -250,6 +280,9 @@ pub async fn submit_creator_application(
 ) -> LemmyResult<Json<CreatorApplicationResponse>> {
   lemmy_api_utils::utils::check_local_user_banned_or_deleted(&local_user_view)?;
   let (content, social) = validate_creator_links(&data.content_links, &data.social_links)?;
+  if let Some(name) = data.username.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+    rename_person(&mut context.pool(), &local_user_view, name).await?;
+  }
   let app = submit_application(
     &mut context.pool(),
     local_user_view.person.id,
