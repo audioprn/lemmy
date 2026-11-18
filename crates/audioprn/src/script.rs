@@ -31,7 +31,13 @@ const MAX_SCRIPT_LENGTH: usize = 200_000;
 const READS_PER_HOUR: i64 = 30;
 /// Ask first / Fine to paywall with credit given and copy sent / Temporary paywalling only /
 /// No paywalled fills.
-const FILL_TERMS: [&str; 4] = ["ask_first", "paywall_ok", "temporary_paywall", "no_paywall"];
+const FILL_TERMS: [&str; 5] = [
+  "ask_first",
+  "license_fee",
+  "paywall_ok",
+  "temporary_paywall",
+  "no_paywall",
+];
 /// A watermark: word joiner, the account id in binary (zero-width space = 0, zero-width
 /// non-joiner = 1), word joiner.
 static WATERMARK: LazyLock<Regex> = LazyLock::new(|| {
