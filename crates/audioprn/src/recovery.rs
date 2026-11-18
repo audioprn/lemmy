@@ -1,9 +1,9 @@
-//! audioprn: no email (user, 2026-11-18), so no password reset emails. Listeners keep a recovery
+//! audioprn: no email (user, 2026-11-18), so no password reset emails. Everyone keeps a recovery
 //! code, shown once (after signing up, or made anew in Settings), to set a new password
-//! themselves. Verified creators and admins can't use one: they ask an admin, who sets a temporary
-//! password for them (creator accounts are worth more to take over).
+//! themselves. A creator who lost the code too asks an admin, who sets a temporary password for
+//! them (the backup, worst case). Admins don't use codes (an admin account is worth the most to
+//! take over); their passwords are fixed on the server.
 
-use crate::is_verified_creator;
 use activitypub_federation::config::Data;
 use actix_web::web::Json;
 use bcrypt::{DEFAULT_COST, hash, verify};
@@ -71,28 +71,19 @@ async fn make_code(context: &LemmyContext, local_user_id: LocalUserId) -> LemmyR
   Ok(code)
 }
 
-/// Verified creators and admins get an admin reset instead.
-async fn needs_admin(
-  context: &LemmyContext,
-  person_id: PersonId,
-  admin: bool,
-) -> LemmyResult<bool> {
-  Ok(admin || is_verified_creator(&mut context.pool(), person_id).await?)
-}
-
 #[derive(Serialize)]
 pub struct RecoveryCode {
   pub code: String,
 }
 
-/// POST /recovery_code: a new recovery code for the logged-in listener (the old one stops working).
+/// POST /recovery_code: a new recovery code for the logged-in user (the old one stops working).
 pub async fn create_recovery_code(
   context: Data<LemmyContext>,
   local_user_view: LocalUserView,
 ) -> LemmyResult<Json<RecoveryCode>> {
   let user = &local_user_view.local_user;
-  if needs_admin(&context, user.person_id, user.admin).await? {
-    return Err(error("creators_ask_an_admin").into());
+  if user.admin {
+    return Err(error("admins_dont_use_codes").into());
   }
   let code = make_code(&context, user.id).await?;
   Ok(Json(RecoveryCode { code }))
@@ -109,15 +100,13 @@ pub struct Recover {
 struct Account {
   #[diesel(sql_type = Integer)]
   local_user_id: i32,
-  #[diesel(sql_type = Integer)]
-  person_id: i32,
   #[diesel(sql_type = Bool)]
   admin: bool,
   #[diesel(sql_type = Nullable<Text>)]
   code_hash: Option<String>,
 }
 
-/// POST /recover (rate limited like signups): a listener sets a new password with their username
+/// POST /recover (rate limited like signups): a user sets a new password with their username
 /// and recovery code. Every login ends, the code is used up, and a new one is returned.
 pub async fn recover(
   Json(data): Json<Recover>,
@@ -127,7 +116,7 @@ pub async fn recover(
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;
   let account: Option<Account> = sql_query(
-    "SELECT lu.id AS local_user_id, p.id AS person_id, lu.admin, rc.code_hash
+    "SELECT lu.id AS local_user_id, lu.admin, rc.code_hash
      FROM person p JOIN local_user lu ON lu.person_id = p.id
      LEFT JOIN recovery_code rc ON rc.local_user_id = lu.id
      WHERE lower(p.name) = lower($1) AND p.local AND NOT p.deleted",
@@ -136,12 +125,9 @@ pub async fn recover(
   .get_result(conn)
   .await
   .ok();
-  // The same answer for an unknown name, a wrong code or no code, so names can't be tested.
+  // The same answer for an unknown name, an admin, a wrong code or no code.
   let invalid = || error("invalid_recovery_code");
-  let account = account.ok_or_else(invalid)?;
-  if needs_admin(&context, PersonId(account.person_id), account.admin).await? {
-    return Err(error("creators_ask_an_admin").into());
-  }
+  let account = account.filter(|a| !a.admin).ok_or_else(invalid)?;
   let code_hash = account.code_hash.ok_or_else(invalid)?;
   if !verify(normalise(&data.code), &code_hash).unwrap_or(false) {
     return Err(invalid().into());
