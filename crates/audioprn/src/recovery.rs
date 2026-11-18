@@ -4,6 +4,7 @@
 //! them (the backup, worst case). Admins don't use codes (an admin account is worth the most to
 //! take over); their passwords are fixed on the server.
 
+use crate::is_verified_creator;
 use activitypub_federation::config::Data;
 use actix_web::web::Json;
 use bcrypt::{DEFAULT_COST, hash, verify};
@@ -149,17 +150,22 @@ pub struct TemporaryPassword {
   pub password: String,
 }
 
-/// POST /admin_reset_password (admins): sets a temporary password for someone who lost theirs,
-/// shown once to the admin to pass on. Their logins end. Not for other admins.
+/// POST /admin_reset_password (admins): sets a temporary password for a creator who lost theirs
+/// (and their code), shown once to the admin to pass on. Their logins end. Not for admins.
 pub async fn admin_reset_password(
   Json(data): Json<AdminResetPassword>,
   context: Data<LemmyContext>,
   local_user_view: LocalUserView,
 ) -> LemmyResult<Json<TemporaryPassword>> {
   is_admin(&local_user_view)?;
-  let target = LocalUserView::read_person(&mut context.pool(), PersonId(data.person_id)).await?;
+  let person_id = PersonId(data.person_id);
+  let target = LocalUserView::read_person(&mut context.pool(), person_id).await?;
   if target.local_user.admin {
     return Err(error("cant_reset_an_admin").into());
+  }
+  // The backup is for creators only; listeners rely on their code.
+  if !is_verified_creator(&mut context.pool(), person_id).await? {
+    return Err(error("only_creators_get_a_reset").into());
   }
   let password: String = rand::rng()
     .sample_iter(Alphanumeric)
