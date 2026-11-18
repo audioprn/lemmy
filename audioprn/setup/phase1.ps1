@@ -80,7 +80,7 @@ Write-Host "Site settings applied"
 # --- Communities: main (the Content page) and creators (posts on creators' own pages) ---------
 # The website shows only main on Content. Admins are the only moderators of creators.
 $communities = @(
-  @{ name = $CommunityName; title = $CommunityTitle; summary = "Links to audios and scripts from verified creators."; sidebar = "rules.md" },
+  @{ name = $CommunityName; title = $CommunityTitle; summary = "Everything on the main content page"; sidebar = "rules.md" },
   # Unlisted: not in the communities list (its posts show on each creator's profile).
   @{ name = "creators"; title = "Creator pages"; summary = "Posts on creators' own pages."; sidebar = "creator-pages.md"; visibility = "unlisted" }
 )
