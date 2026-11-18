@@ -1,16 +1,8 @@
 # Shares the local site at https://audioprn.net through a Cloudflare Tunnel
 # (a Cloudflare Access login sits in front). Add it as a third file:
 #   docker compose -f docker/docker-compose.yml -f audioprn/dev/docker-compose.override.yml -f audioprn/dev/docker-compose.tunnel.yml up -d
-# While it's included, use the site at https://audioprn.net, not localhost:8880.
+# The site keeps working at localhost:8880 too.
 services:
-  lemmy-ui:
-    environment:
-      # The address browsers use for the backend.
-      - LEMMY_UI_BACKEND=audioprn.net
-      - LEMMY_UI_HTTPS=true
-      # LEMMY_UI_HTTPS also applies to the internal address unless it says http.
-      - LEMMY_UI_BACKEND_INTERNAL=http://lemmy:8536
-
   # Connects out to Cloudflare; the tunnel's public hostname points at http://proxy:1236.
   cloudflared:
     image: cloudflare/cloudflared:latest
