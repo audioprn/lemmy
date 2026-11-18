@@ -179,6 +179,18 @@ diesel::table! {
   }
 }
 
+// A post's own cash box text, when its creator changed it on the post form (else their default
+// from Settings shows; empty: no cash box).
+diesel::table! {
+  post_cash_box (post_id) {
+    post_id -> Int4,
+    text -> Text,
+  }
+}
+
+/// Like the default cash box in Settings.
+const MAX_CASH_BOX: usize = 500;
+
 #[derive(Debug, Deserialize)]
 pub struct SetPostCredits {
   pub post_id: PostId,
@@ -187,6 +199,9 @@ pub struct SetPostCredits {
   pub off_content: Option<bool>,
   /// No comments from men are welcome (also keeps it off the Content page).
   pub no_men: Option<bool>,
+  /// The post's cash box text (the creator's default is stored as "use the default").
+  /// Unchanged when left out.
+  pub cash_box: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -196,6 +211,26 @@ pub struct PostCreditsResponse {
   pub off_content: Vec<i32>,
   /// Which of the posts welcome no comments from men.
   pub no_men: Vec<i32>,
+  /// The posts with their own cash box text (the others show their creator's default).
+  pub cash_boxes: Vec<PostCashBox>,
+}
+
+#[derive(Debug, Serialize, diesel::Queryable)]
+pub struct PostCashBox {
+  pub post_id: i32,
+  pub text: String,
+}
+
+async fn cash_boxes(
+  conn: &mut diesel_async::AsyncPgConnection,
+  ids: &[i32],
+) -> LemmyResult<Vec<PostCashBox>> {
+  Ok(
+    post_cash_box::table
+      .filter(post_cash_box::post_id.eq_any(ids))
+      .load(conn)
+      .await?,
+  )
 }
 
 #[derive(Debug, Serialize)]
@@ -213,6 +248,10 @@ pub async fn set_post_credits(
 ) -> LemmyResult<Json<PostCreditsResponse>> {
   lemmy_api_utils::utils::check_local_user_banned_or_deleted(&local_user_view)?;
   let credits = validate_credits(data.credits)?;
+  let cash_box = data.cash_box.as_deref().map(str::trim);
+  if cash_box.is_some_and(|t| t.chars().count() > MAX_CASH_BOX) {
+    return Err(LemmyErrorType::Unknown("invalid_cash_box".into()).into());
+  }
   let names: Vec<&str> = credits.iter().map(|c| c.name.as_str()).collect();
   crate::optout::check_opt_out(&mut context.pool(), &[], &names).await?;
   let post_id = data.post_id;
@@ -265,6 +304,22 @@ pub async fn set_post_credits(
             .await?;
         }
       }
+      if let Some(text) = cash_box {
+        diesel::delete(post_cash_box::table.find(post_id.0))
+          .execute(conn)
+          .await?;
+        // The creator's default isn't copied: the post keeps following it if it changes.
+        diesel::sql_query(
+          "INSERT INTO post_cash_box (post_id, text) SELECT $1, $2
+           WHERE $2 IS DISTINCT FROM
+             (SELECT support_text FROM creator_application WHERE person_id = $3)",
+        )
+        .bind::<diesel::sql_types::Integer, _>(post_id.0)
+        .bind::<diesel::sql_types::Text, _>(text)
+        .bind::<diesel::sql_types::Integer, _>(creator_id)
+        .execute(conn)
+        .await?;
+      }
       Ok(())
     })
     .await?;
@@ -273,6 +328,7 @@ pub async fn set_post_credits(
   Ok(Json(PostCreditsResponse {
     off_content,
     no_men,
+    cash_boxes: cash_boxes(conn, &[post_id.0]).await?,
     credits: credits
       .into_iter()
       .map(|c| PostCreditView {
@@ -321,6 +377,7 @@ pub async fn get_post_credits(
     credits,
     off_content,
     no_men,
+    cash_boxes: cash_boxes(conn, &ids).await?,
   }))
 }
 
