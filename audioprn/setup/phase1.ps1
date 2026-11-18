@@ -118,14 +118,15 @@ $communityId = $community.community.id
 
 # --- Post flairs (community tags) -------------------------------------------
 # Every post needs exactly one of these (enforced in crates/audioprn). Tags not in this list are deleted.
+# Creator page posts have no flairs (user, 2026-11-18), so the creators community's are all deleted.
 $existing = @($community.tags | Where-Object { -not $_.deleted } | ForEach-Object { $_.name })
-$tags = @(
+$tags = if ($CommunityName -eq "creators") { @() } else { @(
   @{ name = "script_fill";  display_name = "Audio: Script Fill"; color = "color01" },
   @{ name = "script_offer"; display_name = "Script Offer";       color = "color02" },
   @{ name = "oc";           display_name = "Audio: OC";          color = "color03" },
   @{ name = "podcast_ama";  display_name = "Podcast/AMA";        color = "color04" },
   @{ name = "collection";   display_name = "Collection";         color = "color05" }
-)
+) }
 foreach ($tag in $tags) {
   if ($existing -contains $tag.name) { Write-Host "Tag '$($tag.name)' already exists"; continue }
   Invoke-Api POST "/community/tag" ($tag + @{ community_id = $communityId }) | Out-Null
