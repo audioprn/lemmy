@@ -47,7 +47,8 @@ pub async fn get_post(
   };
 
   // Check to see if the person is a mod or admin, to show deleted / removed
-  let community_id = Post::read(&mut context.pool(), post_id).await?.community_id;
+  let post = Post::read(&mut context.pool(), post_id).await?;
+  let community_id = post.community_id;
 
   let is_mod_or_admin = is_mod_or_admin_opt(
     &mut context.pool(),
@@ -56,7 +57,7 @@ pub async fn get_post(
   )
   .await
   .is_ok();
-  let post_view = PostView::read(
+  let mut post_view = PostView::read(
     &mut context.pool(),
     post_id,
     local_user.as_ref(),
@@ -64,6 +65,11 @@ pub async fn get_post(
     is_mod_or_admin,
   )
   .await?;
+  // audioprn: the creator sees the text of their own hidden (deleted) post. The view blanks it
+  // for everyone but mods and admins, as its own-post check only works for admins.
+  if Some(post.creator_id) == person_id {
+    post_view.post.body = post.body;
+  }
 
   let post_id = post_view.post.id;
   if let Some(person_id) = person_id {
