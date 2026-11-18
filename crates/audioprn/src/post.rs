@@ -2,7 +2,7 @@
 
 use activitypub_federation::config::Data;
 use actix_web::web::{Json, Query};
-use diesel::{ExpressionMethods, QueryDsl, dsl::insert_into};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, dsl::insert_into};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use lemmy_api_utils::context::LemmyContext;
 use lemmy_db_schema_file::{
@@ -501,16 +501,9 @@ pub async fn get_taboo_tags(context: Data<LemmyContext>) -> LemmyResult<Json<Tab
   Ok(Json(TabooTags { tags }))
 }
 
-/// PUT /taboo_tags (admins): replaces the Taboo list and re-marks every post.
-pub async fn set_taboo_tags(
-  Json(data): Json<TabooTags>,
-  context: Data<LemmyContext>,
-  local_user_view: LocalUserView,
-) -> LemmyResult<Json<TabooTags>> {
-  lemmy_api_utils::utils::is_admin(&local_user_view)?;
-  // "[CNC], gore " -> ["cnc", "gore"]
-  let mut tags: Vec<String> = data
-    .tags
+/// "[CNC], gore " -> ["cnc", "gore"]: an admin's tag list as stored, A-Z.
+fn clean_tags(tags: &[String]) -> LemmyResult<Vec<String>> {
+  let mut tags: Vec<String> = tags
     .iter()
     .map(|t| t.trim().trim_start_matches('[').trim_end_matches(']').trim().to_lowercase())
     .filter(|t| !t.is_empty())
@@ -520,6 +513,17 @@ pub async fn set_taboo_tags(
   if tags.len() > MAX_TABOO_TAGS || tags.iter().any(|t| t.chars().count() > 40 || t.contains(['[', ']'])) {
     return Err(LemmyErrorType::Unknown("invalid_taboo_tags".into()).into());
   }
+  Ok(tags)
+}
+
+/// PUT /taboo_tags (admins): replaces the Taboo list and re-marks every post.
+pub async fn set_taboo_tags(
+  Json(data): Json<TabooTags>,
+  context: Data<LemmyContext>,
+  local_user_view: LocalUserView,
+) -> LemmyResult<Json<TabooTags>> {
+  lemmy_api_utils::utils::is_admin(&local_user_view)?;
+  let tags = clean_tags(&data.tags)?;
   let mut pool = context.pool();
   let conn = &mut get_conn(&mut pool).await?;
   let rows: Vec<_> = tags.iter().map(|t| taboo_tag::tag.eq(t)).collect();
@@ -539,6 +543,136 @@ pub async fn set_taboo_tags(
     })
     .await?;
   Ok(Json(TabooTags { tags }))
+}
+
+// Very taboo tags (admins' list, like `taboo_tag`) can only be posted in the cummunities admins
+// allow (by name), or on creator pages, and never show on the Content page (see the
+// audioprn_very_taboo migration).
+diesel::table! {
+  very_taboo_tag (tag) {
+    tag -> Text,
+  }
+}
+
+diesel::table! {
+  very_taboo_community (name) {
+    name -> Text,
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VeryTaboo {
+  pub tags: Vec<String>,
+  /// The cummunities (names) where they can be posted.
+  pub communities: Vec<String>,
+}
+
+/// Fails when the title or text has a very taboo tag and the community doesn't allow them. The
+/// error names the tag and the cummunities that do.
+pub async fn check_very_taboo(
+  pool: &mut DbPool<'_>,
+  community_id: CommunityId,
+  texts: &[Option<&str>],
+) -> LemmyResult<()> {
+  let tags: Vec<String> = texts
+    .iter()
+    .flatten()
+    .flat_map(|t| TAG.find_iter(t))
+    .map(|t| t.as_str().trim_matches(['[', ']']).trim().to_lowercase())
+    .collect();
+  if tags.is_empty() {
+    return Ok(());
+  }
+  let conn = &mut get_conn(pool).await?;
+  let name: String = community::table
+    .find(community_id)
+    .select(community::name)
+    .first(conn)
+    .await?;
+  let allowed: Vec<String> = very_taboo_community::table
+    .order_by(very_taboo_community::name)
+    .select(very_taboo_community::name)
+    .load(conn)
+    .await?;
+  if name == "creators" || allowed.contains(&name) {
+    return Ok(());
+  }
+  let found: Option<String> = very_taboo_tag::table
+    .filter(very_taboo_tag::tag.eq_any(&tags))
+    .select(very_taboo_tag::tag)
+    .first(conn)
+    .await
+    .optional()?;
+  match found {
+    Some(tag) => Err(
+      LemmyErrorType::Unknown(format!("very_taboo:{tag}:{}", allowed.join(", "))).into(),
+    ),
+    None => Ok(()),
+  }
+}
+
+/// GET /very_taboo: the very taboo tags and the cummunities that allow them, A-Z.
+pub async fn get_very_taboo(context: Data<LemmyContext>) -> LemmyResult<Json<VeryTaboo>> {
+  let mut pool = context.pool();
+  let conn = &mut get_conn(&mut pool).await?;
+  let tags = very_taboo_tag::table
+    .order_by(very_taboo_tag::tag)
+    .select(very_taboo_tag::tag)
+    .load(conn)
+    .await?;
+  let communities = very_taboo_community::table
+    .order_by(very_taboo_community::name)
+    .select(very_taboo_community::name)
+    .load(conn)
+    .await?;
+  Ok(Json(VeryTaboo { tags, communities }))
+}
+
+/// PUT /very_taboo (admins): replaces the very taboo tags and the cummunities that allow them.
+/// Posts already made stay where they are.
+pub async fn set_very_taboo(
+  Json(data): Json<VeryTaboo>,
+  context: Data<LemmyContext>,
+  local_user_view: LocalUserView,
+) -> LemmyResult<Json<VeryTaboo>> {
+  lemmy_api_utils::utils::is_admin(&local_user_view)?;
+  let tags = clean_tags(&data.tags)?;
+  // "c/dark, Gay" -> ["dark", "gay"]
+  let mut communities: Vec<String> = data
+    .communities
+    .iter()
+    .map(|c| c.trim().trim_start_matches("c/").to_lowercase())
+    .filter(|c| !c.is_empty())
+    .collect();
+  communities.sort();
+  communities.dedup();
+  if communities.len() > MAX_TABOO_TAGS {
+    return Err(LemmyErrorType::Unknown("invalid_taboo_tags".into()).into());
+  }
+  let tag_rows: Vec<_> = tags.iter().map(|t| very_taboo_tag::tag.eq(t)).collect();
+  let community_rows: Vec<_> = communities
+    .iter()
+    .map(|c| very_taboo_community::name.eq(c))
+    .collect();
+  let mut pool = context.pool();
+  let conn = &mut get_conn(&mut pool).await?;
+  conn
+    .transaction::<_, LemmyError, _>(async |conn| {
+      diesel::delete(very_taboo_tag::table).execute(conn).await?;
+      diesel::delete(very_taboo_community::table).execute(conn).await?;
+      if !tag_rows.is_empty() {
+        insert_into(very_taboo_tag::table).values(&tag_rows).execute(conn).await?;
+      }
+      if !community_rows.is_empty() {
+        insert_into(very_taboo_community::table)
+          .values(&community_rows)
+          .execute(conn)
+          .await?;
+      }
+      Ok(())
+    })
+    .await?;
+  Ok(Json(VeryTaboo { tags, communities }))
 }
 
 #[cfg(test)]

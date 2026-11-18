@@ -1,13 +1,9 @@
 //! audioprn: content filters for the post list. Tags are read from posts into `post_filter_tags`
 //! and `taboo_tag` by a database trigger (see the audioprn_post_filter_tags migration).
 
-/// Tags (upper case, as in `post_filter_tags`) kept off the Content page: the dark cummunity's.
-const DARK_TAGS: [&str; 4] = [
-  "'EXTREME'",
-  "'RACIAL SLURS'",
-  "'GENDER SLURS'",
-  "'ORIENTATION SLURS'",
-];
+/// Very taboo tags (admins' list, see the audioprn_very_taboo migration), upper case as in
+/// `post_filter_tags`: kept off the Content page.
+const VERY_TABOO: &str = "SELECT upper(tag) FROM very_taboo_tag";
 
 /// Builds a SQL condition from comma-separated filter names. Only fixed SQL is used, never the
 /// input text, so this is safe to pass to `sql()`. Unknown names are ignored.
@@ -20,7 +16,7 @@ const DARK_TAGS: [&str; 4] = [
 /// - `followed`: only posts by creators the user follows (ignored for guests).
 /// - `content_page`: the Content page: no posts kept off it, no creators' page posts, and no
 ///   posts tagged [SFW] unless `sfw` is on (the Content page is NSFW only by default), and no
-///   posts with `DARK_TAGS` unless `extreme` is on (the website only sends it with a search).
+///   posts with very taboo tags unless `extreme` is on (the website only sends it with a search).
 /// - `my_recent`, `my_feed`: the two parts of the user's My audioprn feed.
 /// - `saved`: only the user's saved posts.
 /// - `favourites`: only the user's favourite posts (♥).
@@ -72,18 +68,18 @@ pub fn content_filter_sql(filters: &str, my_person_id: Option<i32>) -> String {
        (SELECT 1 FROM community c WHERE c.id = post.community_id AND c.name = 'creators')"
         .into(),
     );
-    // Dark cummunity tags never show on Content, except in searches with `extreme` ticked.
+    // Very taboo tags never show on Content, except in searches with `extreme` ticked.
     let mut hidden = vec![];
     if !has("sfw") {
-      hidden.push("'SFW'");
+      hidden.push("ARRAY['SFW']".to_string());
     }
     if !has("extreme") {
-      hidden.extend(DARK_TAGS);
+      hidden.push(format!("ARRAY({VERY_TABOO})"));
     }
     if !hidden.is_empty() {
       conds.push(format!(
         "NOT {}",
-        tags(&format!("t.tags && ARRAY[{}]", hidden.join(", ")))
+        tags(&format!("t.tags && ({})", hidden.join(" || ")))
       ));
     }
   }

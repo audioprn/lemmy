@@ -68,6 +68,13 @@ pub async fn create_post(
     &local_user_view,
   )
   .await?;
+  // audioprn: very taboo tags only in the cummunities that allow them (and creator pages).
+  lemmy_audioprn::post::check_very_taboo(
+    &mut context.pool(),
+    data.community_id,
+    &[Some(&data.name), data.body.as_deref()],
+  )
+  .await?;
   // audioprn: no mentions of Reddit users who opted out.
   lemmy_audioprn::optout::check_opt_out(
     &mut context.pool(),

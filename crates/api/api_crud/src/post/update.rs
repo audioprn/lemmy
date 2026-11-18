@@ -143,6 +143,13 @@ pub async fn edit_post(
     )
     .await?;
   }
+  // audioprn: very taboo tags only in the cummunities that allow them (and creator pages).
+  lemmy_audioprn::post::check_very_taboo(
+    &mut context.pool(),
+    orig_post.community.id,
+    &[data.name.as_deref(), data.body.as_deref()],
+  )
+  .await?;
 
   let nsfw = if orig_post.community.nsfw {
     Some(true)

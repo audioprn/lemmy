@@ -540,6 +540,7 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
             delete().to(lemmy_audioprn::masterlist::delete_entry),
           )
           .route("/taboo_tags", get().to(lemmy_audioprn::post::get_taboo_tags))
+          .route("/very_taboo", get().to(lemmy_audioprn::post::get_very_taboo))
           .route(
             "/credited_posts",
             get().to(lemmy_audioprn::post::get_credited_posts),
@@ -549,6 +550,7 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
             put().to(lemmy_audioprn::post::hide_credited_post),
           )
           .route("/taboo_tags", put().to(lemmy_audioprn::post::set_taboo_tags))
+          .route("/very_taboo", put().to(lemmy_audioprn::post::set_very_taboo))
           .route(
             "/creator_footers",
             get().to(lemmy_audioprn::creators::get_creator_footers),
