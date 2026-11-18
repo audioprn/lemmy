@@ -12,7 +12,7 @@ Links to voiced and written fictional performance art: **NO Minors, NO AI, NO Li
 4. **Links only, no images.** Audios and scripts are hosted elsewhere. Don't upload or embed media here.
 5. **Follow US law.** No incitement or encouragement to harm others or commit illegal acts, no defamation, no fraud, no true threats.
 6. **Post your own work, or work you have permission to share.** Credit everyone involved in the post's credits: ✍️ writer, 🎬 editor, 🎙️ voice actor.
-7. **Flair every post** with one of: **Audio: Script Fill**, **Script Offer**, **Audio: OC**, **Podcast/AMA**, **Collection**.
+7. **Flair every post** with one of: **Audio: Script Fill**, **Script Offer**, **Audio: OC**, **Audio: Podcast/AMA**, **Collection/Megapost**.
 8. **Tag your post** in square brackets in the title or text, so listeners can filter. Gender tags show voice for listener, like **[F4M]**; TF counts as F and TM as M.
 9. **No real people without consent.** No content about real, identifiable people who haven't agreed to it, and no sharing of anyone's private information.
 10. **Be respectful.** Criticism is fine. Harassment, hate speech, and brigading are not.
