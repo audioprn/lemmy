@@ -26,6 +26,9 @@ pub struct ImportRedditPost {
   pub date: DateTime<Utc>,
   pub credits: Vec<PostCredit>,
   pub post: CreatePost,
+  /// Import it hidden, for the creator to unhide later (user, 2026-11-18).
+  #[serde(default)]
+  pub hidden: bool,
 }
 
 /// POST /audioprn/reddit_import
@@ -75,7 +78,7 @@ pub async fn import_reddit_post(
   // An audio with more than one voice: imported hidden, for the creator to unhide once everyone
   // consented. Scripts (Script Offer flair) are only text, so they're fine.
   let script = res.post_view.tags.0.iter().any(|t| t.name == "script_offer");
-  if multi_voice && !script {
+  if data.hidden || (multi_voice && !script) {
     Post::update(
       &mut context.pool(),
       post_id,
