@@ -126,8 +126,8 @@ $tags = if ($CommunityName -eq "creators") { @() } else { @(
   @{ name = "script_fill";  display_name = "Audio: Script Fill"; color = "color01" },
   @{ name = "script_offer"; display_name = "Script Offer";       color = "color02" },
   @{ name = "oc";           display_name = "Audio: OC";          color = "color03" },
-  @{ name = "podcast_ama";  display_name = "Podcast/AMA";        color = "color04" },
-  @{ name = "collection";   display_name = "Collection";         color = "color05" }
+  @{ name = "podcast_ama";  display_name = "Audio: Podcast/AMA"; color = "color04" },
+  @{ name = "collection";   display_name = "Collection/Megapost"; color = "color05" }
 ) }
 foreach ($tag in $tags) {
   if ($existing -contains $tag.name) { Write-Host "Tag '$($tag.name)' already exists"; continue }
