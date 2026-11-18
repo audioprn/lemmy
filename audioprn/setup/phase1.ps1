@@ -75,6 +75,8 @@ $site = @{
   # The Content feed is sorted by New by default (spec).
   default_post_sort_type        = "new"
   discussion_languages          = @(0, 37)
+  # Dark by default (user, 2026-11-18): guests and members whose theme is "browser" get darkly.
+  default_theme                 = "darkly"
 }
 Invoke-Api PUT "/site" $site | Out-Null
 Write-Host "Site settings applied"
