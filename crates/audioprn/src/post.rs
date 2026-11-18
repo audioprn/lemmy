@@ -78,16 +78,14 @@ pub fn is_multi_voice(title: &str) -> bool {
 }
 
 /// Content and community post titles start with a gender tag like [F4M] and have at most 7
-/// other tags. Creator page posts and admins' posts are exempt.
+/// other tags. Creator page posts are exempt; admins' posts need no gender tag but keep the tag
+/// limit (user, 2026-11-18).
 pub async fn check_title_tags(
   pool: &mut DbPool<'_>,
   community_id: CommunityId,
   title: &str,
   local_user_view: &LocalUserView,
 ) -> LemmyResult<()> {
-  if local_user_view.local_user.admin {
-    return Ok(());
-  }
   let conn = &mut get_conn(pool).await?;
   let community_name: String = community::table
     .find(community_id)
@@ -98,9 +96,10 @@ pub async fn check_title_tags(
     return Ok(());
   }
   let title = title.trim_start();
-  if !TAG
-    .find(title)
-    .is_some_and(|t| t.start() == 0 && GENDER_TAG.is_match(t.as_str()))
+  if !local_user_view.local_user.admin
+    && !TAG
+      .find(title)
+      .is_some_and(|t| t.start() == 0 && GENDER_TAG.is_match(t.as_str()))
   {
     return Err(LemmyErrorType::Unknown("title_needs_gender_tag".into()).into());
   }
