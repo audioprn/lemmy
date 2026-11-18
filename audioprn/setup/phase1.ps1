@@ -14,7 +14,7 @@ param(
   [string]$AdminPassword = "",          # prompted for if empty
   [string]$SiteName = "audioprn",       # max 20 characters
   [string]$CommunityName = "main",
-  [string]$CommunityTitle = "Content page",
+  [string]$CommunityTitle = "All the smut",
   # false = guest access: logged-out visitors can read after accepting the 18+ popup, but must
   # sign up to comment, vote, follow or post. true = nothing is visible until you log in.
   [bool]$PrivateInstance = $false
