@@ -61,6 +61,12 @@ pub async fn create_post(
     &local_user_view,
   )
   .await?;
+  lemmy_audioprn::post::check_tags_in_community(
+    &mut context.pool(),
+    data.community_id,
+    data.tags.as_deref(),
+  )
+  .await?;
   lemmy_audioprn::post::check_title_tags(
     &mut context.pool(),
     data.community_id,

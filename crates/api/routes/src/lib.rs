@@ -459,6 +459,7 @@ pub fn config(cfg: &mut ServiceConfig, rate_limit: &RateLimit) {
           )
           .route("/post_credits", get().to(lemmy_audioprn::post::get_post_credits))
           .route("/post_credits", put().to(lemmy_audioprn::post::set_post_credits))
+          .route("/post_delete", post().to(lemmy_audioprn::post::delete_post_for_good))
           .route(
             "/post_reactions",
             get().to(lemmy_audioprn::reaction::get_post_reactions),

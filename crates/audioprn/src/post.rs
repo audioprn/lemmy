@@ -704,3 +704,54 @@ mod tests {
     }
   }
 }
+
+#[derive(Debug, Deserialize)]
+pub struct DeletePostForGood {
+  pub post_id: PostId,
+}
+
+/// POST /post_delete: a creator deletes their own post for good (user, 2026-11-18), with its
+/// comments, reactions, credits and script (they all go with the post). Hide is the undoable one.
+pub async fn delete_post_for_good(
+  Json(data): Json<DeletePostForGood>,
+  context: Data<LemmyContext>,
+  local_user_view: LocalUserView,
+) -> LemmyResult<Json<bool>> {
+  let mut pool = context.pool();
+  let conn = &mut get_conn(&mut pool).await?;
+  let deleted = diesel::delete(
+    post::table
+      .find(data.post_id)
+      .filter(post::creator_id.eq(local_user_view.person.id)),
+  )
+  .execute(conn)
+  .await?;
+  if deleted == 0 {
+    return Err(LemmyErrorType::NotFound.into());
+  }
+  Ok(Json(true))
+}
+
+/// The flairs belong to the community. Checked before the post is saved: Lemmy only checks after
+/// saving, so a wrong flair left a saved post behind an error (2026-11-18).
+pub async fn check_tags_in_community(
+  pool: &mut DbPool<'_>,
+  community_id: CommunityId,
+  tags: Option<&[CommunityTagId]>,
+) -> LemmyResult<()> {
+  let Some(tags) = tags.filter(|t| !t.is_empty()) else {
+    return Ok(());
+  };
+  let conn = &mut get_conn(pool).await?;
+  let found: i64 = community_tag::table
+    .filter(community_tag::community_id.eq(community_id))
+    .filter(community_tag::id.eq_any(tags))
+    .count()
+    .get_result(conn)
+    .await?;
+  if usize::try_from(found).unwrap_or(0) == tags.len() {
+    Ok(())
+  } else {
+    Err(LemmyErrorType::TagNotInCommunity.into())
+  }
+}
